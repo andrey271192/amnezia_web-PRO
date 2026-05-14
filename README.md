@@ -35,6 +35,27 @@
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo bash
 ```
 
+### Переменные окружения и `sudo`
+
+Частая ошибка: задали **`AWG_PROFILES`**, **`ADMIN_PASSWORD`** или другую переменную из таблицы «в одной строке» перед `curl`, а затем выполнили **`curl … | sudo bash`**. По умолчанию **`sudo` не передаёт** это окружение в `bash`, который читает установочный скрипт с stdin: установщик **не увидит** переменные, переключатель **«Инстанс»** не появится.
+
+**Надёжные варианты:**
+
+1. **`sudo -E bash`** вместо `sudo bash` (для большинства VPS достаточно):
+
+```bash
+AWG_PROFILES='[{"id":"awg",…}]' curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo -E bash
+```
+
+2. **Файл на VPS** (способ без `-E`): записать JSON **одной строкой** в **`/root/amnezia-admin.awg-profiles.json`** (например `umask 077; printf '%s\n' '[{"id":"awg",…}]' > /root/amnezia-admin.awg-profiles.json`), затем обычный **`curl … | sudo bash`** — установщик подставит профили из файла (см. абзац про снимок ниже таблицы).
+
+3. Установка под **`root`** без `sudo`: **`curl … | bash`** — переменные текущей оболочки доходят до скрипта.
+
+**Не используйте** конструкции вроде **`curl … | bash -c "sudo -E bash"`**: stdin установочного скрипта должен попасть **напрямую** в тот `bash`, который его выполняет.
+
+**Безопасность:** не публикуйте пароли от VPS, ключи и дампы `clientsTable` в Issues, чатах и скриншотах — это полный компромисс сервера.
+
+
 Другой репозиторий или ветка:
 
 ```bash
@@ -57,7 +78,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
 | `HOST_PORT` | `8080` | Порт HTTP панели на хосте |
 | `AWG_CONTAINER` | `amnezia-awg2` | Имя контейнера Amnezia WG |
-| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе. В каждом объекте можно задать `warpDir`, `warpConf`, `warpClientsList`, `startScript` — см. раздел **Cloudflare WARP** |
+| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе. При однострочной установке с переменной в окружении нужен **`sudo -E bash`** или файл **`/root/amnezia-admin.awg-profiles.json`** — см. раздел **«Переменные окружения и sudo»** выше. В каждом объекте можно задать `warpDir`, `warpConf`, `warpClientsList`, `startScript` — см. раздел **Cloudflare WARP** |
 | `WARP_DIR` | `/opt/warp` | В контейнере AWG: каталог для `warp.conf` и `clients.list` |
 | `WARP_CONF_PATH` | `{WARP_DIR}/warp.conf` | Нестандартный путь к конфигу WARP |
 | `WARP_CLIENTS_LIST` | `{WARP_DIR}/clients.list` | Список строк `10.8.x.x/32` — кому маршрутизировать трафик через интерфейс `warp` |
@@ -106,6 +127,8 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scrip
 Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — **`awg`**; поле **`pskPath`** желательно указывать явно, если путь к `wireguard_psk.key` нестандартный.
 
 Если в вебе пропал список **«Инстанс»**, смотрите раздел «Если пропал список Инстанс» в **[docs/panel-guide.md](docs/panel-guide.md)**.
+
+Если на хосте уже запущено **несколько** контейнеров с именами вида **`amnezia-awg*`**, а в панели по-прежнему один инстанс — задайте **`AWG_PROFILES`** (или файл **`/root/amnezia-admin.awg-profiles.json`**) и перезапустите установщик; при запуске **`install.sh`** без профилей в этом случае выводится предупреждение в консоль.
 
 ### Cloudflare WARP (необязательно)
 

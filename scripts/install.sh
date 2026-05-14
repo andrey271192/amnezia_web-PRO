@@ -109,6 +109,15 @@ if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
   fi
 fi
 
+if [[ -z "${AWG_PROFILES:-}" ]]; then
+  __awg_multi_count="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^amnezia-awg' | wc -l | tr -d '[:space:]')"
+  if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
+    echo "⚠ Запущено ${__awg_multi_count} контейнеров с именами amnezia-awg*, но AWG_PROFILES не задан."
+    echo "  Переключатель «Инстанс» в панели не появится: см. README, раздел «Несколько инстансов» и «Переменные окружения и sudo»."
+    echo "  Без sudo -E: запишите JSON одной строкой в ${AWG_PROFILE_SNAPSHOT} и снова запустите этот установщик."
+  fi
+fi
+
 PREV_CONTAINER_ENV=""
 if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
   PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
