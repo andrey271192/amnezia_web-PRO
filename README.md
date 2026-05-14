@@ -1,6 +1,8 @@
 # Amnezia Admin WebUI
 
-Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения, при наличии `last_config` на сервере — **скачивание клиентского .conf**, а также **политика выхода через Cloudflare WARP** по клиентам (без Telegram и без QR — только скрипт установки на хосте и блок в вебе). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
+Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения; при нескольких контейнерах — переключатель **«Инстанс»** (`AWG_PROFILES`); **экспорт .conf** при наличии `last_config`; **новый клиент под каскад** (свой Endpoint и ключи на сервере); **Cloudflare WARP** по клиентам (без Telegram и без QR — скрипт на хосте и блок в вебе). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
+
+Справочник по интерфейсу, типичным сбоям и HTTP API: **[docs/panel-guide.md](docs/panel-guide.md)**.
 
 **Безопасность:** контейнер с монтированием `docker.sock` эквивалентен root на хосте — используйте сложный пароль и по возможности ограничьте доступ по IP или TLS.
 
@@ -73,14 +75,25 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 #### Несколько инстансов (AmneziaWG + Legacy и т.д.)
 
-Пути и имена контейнеров на сервере могут отличаться — проверьте внутри контейнера (`docker exec … ls /opt/amnezia`). Пример **двух** профилей при запуске установщика (одна строка JSON в кавычках):
+Пути и имена контейнеров на сервере могут отличаться — проверьте внутри контейнера (`docker exec … ls /opt/amnezia`). Установщик сохраняет JSON в **`/root/amnezia-admin.awg-profiles.json`** и при следующем запуске подставляет его, если вы не передали `AWG_PROFILES`.
+
+**Пример 1** — классическая схема: новый AWG в `amnezia-awg2`, Legacy в отдельном контейнере с каталогом `wireguard`:
 
 ```bash
-AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-wg0","confPath":"/opt/amnezia/wireguard/wg0.conf","clientsPath":"/opt/amnezia/wireguard/clientsTable","iface":"wg0","wgBinary":"wg"}]' \
+AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-wg0","confPath":"/opt/amnezia/wireguard/wg0.conf","clientsPath":"/opt/amnezia/wireguard/clientsTable","iface":"wg0","wgBinary":"wg","pskPath":"/opt/amnezia/wireguard/wireguard_psk.key"}]' \
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo -E bash
 ```
 
-Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — `awg`; подставьте свои `container`, `confPath`, `clientsPath`, `iface`, `pskPath` при необходимости.
+**Пример 2** — оба конфигурационных набора внутри контейнера **`amnezia-awg`** (файл `wg0.conf` рядом с `awg0.conf` в `/opt/amnezia/awg/`), второй контейнер **`amnezia-awg2`**:
+
+```bash
+AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-awg","confPath":"/opt/amnezia/awg/wg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"wg0","wgBinary":"wg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"}]' \
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo -E bash
+```
+
+Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — **`awg`**; поле **`pskPath`** желательно указывать явно, если путь к `wireguard_psk.key` нестандартный.
+
+Если в вебе пропал список **«Инстанс»**, смотрите раздел «Если пропал список Инстанс» в **[docs/panel-guide.md](docs/panel-guide.md)**.
 
 ### Cloudflare WARP (только AmneziaWG в Docker)
 
@@ -101,7 +114,7 @@ chmod +x scripts/warp-amnezia.sh
 
 Необязательно передайте в контейнер **amnezia-admin** переменные `WARP_DIR`, `WARP_CONF_PATH`, `WARP_CLIENTS_LIST`, `AMNEZIA_START_SCRIPT` через установщик — см. таблицу выше.
 
-После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
+После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`). **Лендинг** с поддержкой по умолчанию на порту **80**; если порт занят, установщик сообщит об ошибке — задайте **`LANDING_PORT=8081`** или **`SKIP_LANDING=1`** (на работу панели это не влияет). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 
 Футер с ссылками (**Amnezia Admin WebUI**, Boosty, Ozon СБП, Telegram) в админке находится **внизу страницы** — прокрутите ниже таблицы.
 
@@ -149,10 +162,10 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 После обновления сделайте в браузере **жёсткое обновление** страницы (Ctrl+Shift+R / ⌘+Shift+R), если интерфейс всё ещё старый.
 
-Команда на сервере для проверки, что в образ попали новые статические файлы (после установки должно быть **Amnezia Admin WebUI**, не «Kaskad»):
+Команда на сервере для проверки, что в образ попали актуальные статические файлы:
 
 ```bash
-sudo docker run --rm amnezia-admin:latest grep -E -o 'Amnezia Admin WebUI|Kaskad' /app/public/index.html | head -1
+sudo docker run --rm amnezia-admin:latest grep -Eo 'Новый клиент под каскад|Cloudflare WARP' /app/public/index.html | head -1
 ```
 
 ---
