@@ -592,7 +592,16 @@ app.post("/api/clients/delete", requireAuth, async (req, res) => {
 
 const pub = path.join(__dirname, "public");
 if (fs.existsSync(pub)) {
-  app.use(express.static(pub));
+  app.use(
+    express.static(pub, {
+      setHeaders(res, filePath) {
+        const lower = filePath.toLowerCase();
+        if (lower.endsWith(".html") || lower.endsWith(".js") || lower.endsWith(".css")) {
+          res.setHeader("Cache-Control", "no-store");
+        }
+      },
+    }),
+  );
 }
 
 app.use((_req, res) => {
