@@ -916,3 +916,37 @@ tr:last-child td {
   max-height: 220px;
   overflow: auto;
 }
+
+.edition-banner {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: linear-gradient(135deg, rgba(125, 211, 252, 0.12), rgba(94, 234, 212, 0.06));
+}
+
+.edition-banner.hidden {
+  display: none;
+}
+
+.edition-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.edition-banner-text {
+  flex: 1 1 280px;
+}
+
+.edition-banner-pitch {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.edition-banner-cta {
+  flex-shrink: 0;
+}

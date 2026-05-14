@@ -60,6 +60,68 @@ let warpSshPendingCmd = null;
 /** Какие панели скрыты настройкой сервера (`UI_HIDE_SECTIONS`). */
 let uiHidden = { users: false, warp: false, cascade: false };
 
+const editionBanner = document.querySelector("#edition-banner");
+const DEFAULT_HEADER_SUB = document.querySelector(".top .sub")?.textContent?.trim() || "";
+
+/** Состояние редакции панели (community = только просмотр клиентов). */
+let editionState = {
+  tier: "pro",
+  readOnlyClients: false,
+  upgradeUrl: null,
+  upgradePitch: null,
+  showDebugWg: true,
+};
+
+function applyEditionPayload(data) {
+  const ed = data?.edition;
+  if (!ed || typeof ed !== "object") return;
+  editionState = {
+    tier: ed.tier === "community" ? "community" : "pro",
+    readOnlyClients: Boolean(ed.readOnlyClients),
+    upgradeUrl: typeof ed.upgradeUrl === "string" ? ed.upgradeUrl : null,
+    upgradePitch: typeof ed.upgradePitch === "string" ? ed.upgradePitch : null,
+    showDebugWg: ed.showDebugWg !== false,
+  };
+  const subEl = document.querySelector(".top .sub");
+  if (subEl) {
+    if (editionState.tier === "community") {
+      subEl.textContent =
+        "Базовая панель amnezia_web: только просмотр клиентов AmneziaWG и статусов. Управление туннелем, экспорт .conf, каскад, Cloudflare WARP и синхронизация времени хоста — в версии PRO.";
+    } else {
+      subEl.textContent = DEFAULT_HEADER_SUB;
+    }
+  }
+  if (editionBanner) {
+    if (editionState.tier === "community") {
+      editionBanner.classList.remove("hidden");
+      editionBanner.innerHTML = "";
+      const wrap = document.createElement("div");
+      wrap.className = "edition-banner-inner";
+      const textCol = document.createElement("div");
+      textCol.className = "edition-banner-text";
+      const strong = document.createElement("strong");
+      strong.textContent = "Базовая версия · только просмотр";
+      const pitch = document.createElement("p");
+      pitch.className = "edition-banner-pitch muted";
+      pitch.textContent = editionState.upgradePitch || "";
+      textCol.append(strong, pitch);
+      const cta = document.createElement("a");
+      cta.className = "btn small primary edition-banner-cta";
+      cta.rel = "noopener noreferrer";
+      cta.target = "_blank";
+      cta.href = editionState.upgradeUrl || "https://boosty.to/andrey27/donate";
+      cta.textContent = "Разблокировать PRO (Boosty)";
+      wrap.append(textCol, cta);
+      editionBanner.appendChild(wrap);
+    } else {
+      editionBanner.classList.add("hidden");
+      editionBanner.innerHTML = "";
+    }
+  }
+  document.querySelector(".clock-host-sync")?.classList.toggle("hidden", editionState.readOnlyClients);
+  if (wgRawDetails) wgRawDetails.hidden = uiHidden.users || !editionState.showDebugWg;
+}
+
 function applyUiHiddenFromPayload(data) {
   const u = data?.uiHidden;
   if (u && typeof u === "object") {
@@ -70,7 +132,7 @@ function applyUiHiddenFromPayload(data) {
     };
   }
   if (usersPanel) usersPanel.hidden = uiHidden.users;
-  if (wgRawDetails) wgRawDetails.hidden = uiHidden.users;
+  if (wgRawDetails) wgRawDetails.hidden = uiHidden.users || !editionState.showDebugWg;
   if (cascadePanel) cascadePanel.hidden = uiHidden.cascade;
 }
 
@@ -289,6 +351,7 @@ async function checkSession() {
 async function loadProtocols() {
   try {
     const data = await api("/api/protocols");
+    applyEditionPayload(data);
     protoLabel.textContent = `Протокол: ${data.currentLabel || "AmneziaWG"}`;
     if (profileHintEl) {
       if (data.singleProfile && typeof data.profilesPersistHint === "string" && data.profilesPersistHint) {
@@ -517,6 +580,14 @@ async function loadTimeSyncCaps() {
   const btn = document.querySelector("#sync-host-time");
   try {
     const c = await api("/api/time-sync-capabilities");
+    if (editionState.readOnlyClients || c.communityBlocked) {
+      if (hint) {
+        hint.textContent =
+          "В базовой версии синхронизация времени хоста по SSH недоступна — это функция PRO.";
+      }
+      if (btn) btn.disabled = true;
+      return;
+    }
     if (hint) {
       hint.textContent = c.hostTimeSync
         ? `Записывается UTC-момент с этого устройства на хост по SSH (root@${c.sshHost}). Пояс строки «Сервер»: ${c.serverClockTimeZone}. Пароль не сохраняется.`
@@ -609,24 +680,35 @@ function renderRows(clients) {
     nameWrap.className = "name-cell";
     const strong = document.createElement("strong");
     strong.textContent = c.name;
-    const renameWrap = document.createElement("div");
-    renameWrap.className = "rename-inline";
-    renameWrap.appendChild(
-      btn("Переименовать", "btn small ghost", () => void renameClient(c))
-    );
-    nameWrap.append(strong, renameWrap);
-    if (!c.exportAvailable) {
-      const hintFold = document.createElement("details");
-      hintFold.className = "hint-mini";
-      const sum = document.createElement("summary");
-      sum.textContent = "Нет готового .conf на сервере (last_config)";
-      hintFold.appendChild(sum);
-      const exHint = document.createElement("p");
-      exHint.className = "muted export-missing-hint";
-      exHint.textContent =
-        "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
-      hintFold.appendChild(exHint);
-      nameWrap.appendChild(hintFold);
+    if (!editionState.readOnlyClients) {
+      const renameWrap = document.createElement("div");
+      renameWrap.className = "rename-inline";
+      renameWrap.appendChild(
+        btn("Переименовать", "btn small ghost", () => void renameClient(c))
+      );
+      nameWrap.append(strong, renameWrap);
+      if (!c.exportAvailable) {
+        const hintFold = document.createElement("details");
+        hintFold.className = "hint-mini";
+        const sum = document.createElement("summary");
+        sum.textContent = "Нет готового .conf на сервере (last_config)";
+        hintFold.appendChild(sum);
+        const exHint = document.createElement("p");
+        exHint.className = "muted export-missing-hint";
+        exHint.textContent =
+          "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
+        hintFold.appendChild(exHint);
+        nameWrap.appendChild(hintFold);
+      }
+    } else {
+      nameWrap.appendChild(strong);
+      const roHint = document.createElement("p");
+      roHint.className = "muted hint-mini";
+      roHint.style.margin = "0.35rem 0 0";
+      roHint.textContent = c.exportAvailable
+        ? "На сервере есть данные для .conf — скачивание доступно в PRO."
+        : "Нет last_config на сервере — полный конфиг в приложении Amnezia.";
+      nameWrap.appendChild(roHint);
     }
     nameTd.appendChild(nameWrap);
 
@@ -647,42 +729,52 @@ function renderRows(clients) {
     offTd.className = "date-cell";
     const dateLine = document.createElement("div");
     dateLine.textContent = formatLastDisconnect(c);
-    const dtWrap = document.createElement("div");
-    dtWrap.className = "rename-inline";
-    dtWrap.appendChild(
-      btn("Задать дату", "btn small ghost", () => openEditDisconnectDialog(c))
-    );
-    offTd.append(dateLine, dtWrap);
+    offTd.appendChild(dateLine);
+    if (!editionState.readOnlyClients) {
+      const dtWrap = document.createElement("div");
+      dtWrap.className = "rename-inline";
+      dtWrap.appendChild(
+        btn("Задать дату", "btn small ghost", () => openEditDisconnectDialog(c))
+      );
+      offTd.appendChild(dtWrap);
+    }
 
     const actTd = document.createElement("td");
     actTd.className = "actions";
 
-    if (c.activeInConf) {
-      actTd.appendChild(btn("Выключить", "btn small ghost", () => openDisableDialog(c)));
+    if (editionState.readOnlyClients) {
+      const lock = document.createElement("span");
+      lock.className = "muted";
+      lock.textContent = "Только PRO";
+      actTd.appendChild(lock);
     } else {
-      actTd.appendChild(
-        btn("Включить", "btn small primary", () => mutate("/api/clients/enable", c.clientId))
-      );
-    }
-    if (c.exportAvailable) {
-      const direct = document.createElement("a");
-      direct.className = "btn small ghost";
-      direct.href = clientExportGetUrl(c.clientId);
-      direct.textContent = "Прямая ссылка";
-      direct.rel = "noopener";
-      direct.title =
-        "Открыть в новой вкладке — скачается .conf, если вы авторизованы в этой панели (cookies).";
+      if (c.activeInConf) {
+        actTd.appendChild(btn("Выключить", "btn small ghost", () => openDisableDialog(c)));
+      } else {
+        actTd.appendChild(
+          btn("Включить", "btn small primary", () => mutate("/api/clients/enable", c.clientId))
+        );
+      }
+      if (c.exportAvailable) {
+        const direct = document.createElement("a");
+        direct.className = "btn small ghost";
+        direct.href = clientExportGetUrl(c.clientId);
+        direct.textContent = "Прямая ссылка";
+        direct.rel = "noopener";
+        direct.title =
+          "Открыть в новой вкладке — скачается .conf, если вы авторизованы в этой панели (cookies).";
 
-      actTd.appendChild(btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)));
-      actTd.appendChild(direct);
-      actTd.appendChild(
-        btn("Копировать URL", "btn small ghost", async () => {
-          const ok = await copyTextToClipboard(clientExportGetUrl(c.clientId));
-          setStatus(ok ? "Ссылка скопирована (вставьте в браузер, будучи залогиненным)." : "Не удалось скопировать.", !ok);
-        }),
-      );
+        actTd.appendChild(btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)));
+        actTd.appendChild(direct);
+        actTd.appendChild(
+          btn("Копировать URL", "btn small ghost", async () => {
+            const ok = await copyTextToClipboard(clientExportGetUrl(c.clientId));
+            setStatus(ok ? "Ссылка скопирована (вставьте в браузер, будучи залогиненным)." : "Не удалось скопировать.", !ok);
+          }),
+        );
+      }
+      actTd.appendChild(btn("Удалить", "btn small warn", () => confirmDelete(c.name, c.clientId)));
     }
-    actTd.appendChild(btn("Удалить", "btn small warn", () => confirmDelete(c.name, c.clientId)));
 
     tr.append(nameTd, ipTd, stTd, offTd, actTd);
     rowsEl.appendChild(tr);
@@ -1059,6 +1151,7 @@ async function loadClients() {
   try {
     setStatus("Загрузка…", false);
     const data = await api("/api/clients");
+    applyEditionPayload(data);
     applyUiHiddenFromPayload(data);
     const pref = data.profileLabel ? `${data.profileLabel} · ` : "";
     if (uiHidden.users) {

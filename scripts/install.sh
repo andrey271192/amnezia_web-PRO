@@ -193,6 +193,21 @@ elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:
   RUN_ENV+=( -e "ALLOW_DEFAULT_PASSWORD=1" )
 fi
 
+if [[ -n "${AMNEZIA_EDITION:-}" ]]; then
+  RUN_ENV+=( -e "AMNEZIA_EDITION=${AMNEZIA_EDITION}" )
+elif [[ -f "${INSTALL_DIR}/.amnezia-panel-edition" ]]; then
+  __PE="$(tr -d '\r\n' <"${INSTALL_DIR}/.amnezia-panel-edition" | head -c 48)"
+  if [[ -n "${__PE}" ]]; then
+    RUN_ENV+=( -e "AMNEZIA_EDITION=${__PE}" )
+    echo "→ AMNEZIA_EDITION из ${INSTALL_DIR}/.amnezia-panel-edition: ${__PE}"
+  fi
+fi
+for __ce_var in COMMUNITY_UPGRADE_URL COMMUNITY_UPGRADE_PITCH; do
+  if [[ -n "${!__ce_var:-}" ]]; then
+    RUN_ENV+=( -e "${__ce_var}=${!__ce_var}" )
+  fi
+done
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 
 docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \

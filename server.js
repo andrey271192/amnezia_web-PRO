@@ -38,6 +38,33 @@ function resolveUiHidden() {
 
 const UI_HIDDEN = resolveUiHidden();
 
+const AMNEZIA_EDITION = (process.env.AMNEZIA_EDITION || "pro").trim().toLowerCase();
+const IS_COMMUNITY = AMNEZIA_EDITION === "community";
+const COMMUNITY_UPGRADE_URL = process.env.COMMUNITY_UPGRADE_URL?.trim() || "https://boosty.to/andrey27/donate";
+const COMMUNITY_UPGRADE_PITCH =
+  process.env.COMMUNITY_UPGRADE_PITCH?.trim() ||
+  "В PRO: вкл/выкл клиентов, даты и расписание отключений, переименование, удаление, экспорт .conf, каскад, Cloudflare WARP, синхронизация времени хоста. Полная сборка — приватный репозиторий amnezia_web-PRO; доступ по подписке Boosty.";
+
+function editionPayload() {
+  return {
+    tier: IS_COMMUNITY ? "community" : "pro",
+    readOnlyClients: IS_COMMUNITY,
+    upgradeUrl: IS_COMMUNITY ? COMMUNITY_UPGRADE_URL : null,
+    upgradePitch: IS_COMMUNITY ? COMMUNITY_UPGRADE_PITCH : null,
+    showDebugWg: !IS_COMMUNITY,
+  };
+}
+
+function effectiveUiHidden() {
+  if (!IS_COMMUNITY) return { ...UI_HIDDEN };
+  return {
+    users: UI_HIDDEN.users,
+    warp: true,
+    cascade: true,
+  };
+}
+
+
 function parseProfilesFromEnv() {
   const raw = process.env.AWG_PROFILES?.trim();
   const fallback = () => {
@@ -309,6 +336,23 @@ function requireAuthOrExportToken(req, res, next) {
     return;
   }
   requireAuth(req, res, next);
+}
+
+function rejectCommunityProOnly(res) {
+  res.status(403).json({
+    error:
+      "Доступно в версии PRO: управление клиентами, экспорт .conf, каскад, Cloudflare WARP и синхронизация времени хоста.",
+    upgradeRequired: true,
+    upgradeUrl: COMMUNITY_UPGRADE_URL,
+  });
+}
+
+function requireProTier(_req, res, next) {
+  if (!IS_COMMUNITY) {
+    next();
+    return;
+  }
+  rejectCommunityProOnly(res);
 }
 
 function runtimeFromExportRequest(req) {
@@ -1316,6 +1360,9 @@ if (UI_HIDDEN.users || UI_HIDDEN.warp || UI_HIDDEN.cascade) {
     `UI_HIDDEN: users=${UI_HIDDEN.users} warp=${UI_HIDDEN.warp} cascade=${UI_HIDDEN.cascade}`,
   );
 }
+if (IS_COMMUNITY) {
+  console.warn(`Редакция community (только просмотр клиентов). PRO: ${COMMUNITY_UPGRADE_URL}`);
+}
 app.use(express.json({ limit: "512kb" }));
 
 app.get("/health", (_req, res) => {
@@ -1361,6 +1408,15 @@ app.get("/api/server-time", requireAuth, (req, res) => {
 });
 
 app.get("/api/time-sync-capabilities", requireAuth, (_req, res) => {
+  if (IS_COMMUNITY) {
+    res.json({
+      hostTimeSync: false,
+      sshHost: process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1",
+      serverClockTimeZone: resolveServerClockTimeZone(),
+      communityBlocked: true,
+    });
+    return;
+  }
   res.json({
     hostTimeSync: hostTimeSyncConfigured(),
     sshHost: process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1",
@@ -1368,7 +1424,7 @@ app.get("/api/time-sync-capabilities", requireAuth, (_req, res) => {
   });
 });
 
-app.post("/api/sync-host-time", requireAuth, async (req, res) => {
+app.post("/api/sync-host-time", requireAuth, requireProTier, async (req, res) => {
   if (!hostTimeSyncConfigured()) {
     return res.status(503).json({
       error:
@@ -1400,7 +1456,7 @@ app.post("/api/sync-host-time", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/warp/host-setup", requireAuth, async (req, res) => {
+app.post("/api/warp/host-setup", requireAuth, requireProTier, async (req, res) => {
   if (UI_HIDDEN.warp) {
     return res.status(403).json({ error: MSG_UI_WARP_OFF });
   }
@@ -1488,6 +1544,12 @@ app.post("/api/change-password", requireAuth, (req, res) => {
 
 app.get("/api/protocols", requireAuth, (req, res) => {
   const rt = runtimeForRequest(req);
+  const hintSingle =
+    PROFILES.length < 2
+      ? IS_COMMUNITY
+        ? "Один инстанс в интерфейсе. Несколько контейнеров и профиль AWG_PROFILES — в полной панели PRO."
+        : "Сейчас один инстанс: при установке не передали AWG_PROFILES или не восстановился снимок. Задайте JSON профилей и запустите install.sh — он сохранится в /root/amnezia-admin.awg-profiles.json."
+      : "";
   res.json({
     currentId: rt.profile.id,
     currentLabel: rt.profile.label,
@@ -1497,10 +1559,8 @@ app.get("/api/protocols", requireAuth, (req, res) => {
       container: p.container,
     })),
     singleProfile: PROFILES.length < 2,
-    profilesPersistHint:
-      PROFILES.length < 2
-        ? "Сейчас один инстанс: при установке не передали AWG_PROFILES или не восстановился снимок. Задайте JSON профилей и запустите install.sh — он сохранится в /root/amnezia-admin.awg-profiles.json."
-        : "",
+    profilesPersistHint: hintSingle,
+    edition: editionPayload(),
   });
 });
 
@@ -1577,7 +1637,8 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       clients: rows,
       wgShow,
       warp: warpOut,
-      uiHidden: { ...UI_HIDDEN },
+      uiHidden: { ...effectiveUiHidden() },
+      edition: editionPayload(),
     });
   } catch (e) {
     console.error(e);
@@ -1586,6 +1647,14 @@ app.get("/api/clients", requireAuth, async (req, res) => {
 });
 
 async function serveClientConfigExport(req, res) {
+  if (IS_COMMUNITY) {
+    res.status(403).json({
+      error: "Экспорт .conf доступен в версии PRO.",
+      upgradeRequired: true,
+      upgradeUrl: COMMUNITY_UPGRADE_URL,
+    });
+    return;
+  }
   const tokenOk =
     req.method === "GET" &&
     verifyExportQueryToken(typeof req.query.token === "string" ? req.query.token : "");
@@ -1665,7 +1734,7 @@ app.post("/api/clients/export-config", requireAuth, (req, res) => {
  * Новый клиент для каскада: генерирует ключи, добавляет peer на сервер, сохраняет last_config,
  * отдаёт .conf с Endpoint = endpointHost:endpointPort (ваш промежуточный узел).
  */
-app.post("/api/clients/create-cascade", requireAuth, async (req, res) => {
+app.post("/api/clients/create-cascade", requireAuth, requireProTier, async (req, res) => {
   if (UI_HIDDEN.cascade) {
     return res.status(403).json({ error: MSG_UI_CASCADE_OFF });
   }
@@ -1781,7 +1850,7 @@ AllowedIPs = ${tunnelIp}/32
   }
 });
 
-app.post("/api/warp/start", requireAuth, async (req, res) => {
+app.post("/api/warp/start", requireAuth, requireProTier, async (req, res) => {
   if (UI_HIDDEN.warp) {
     return res.status(403).json({ error: MSG_UI_WARP_OFF });
   }
@@ -1802,7 +1871,7 @@ app.post("/api/warp/start", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/warp/stop", requireAuth, async (req, res) => {
+app.post("/api/warp/stop", requireAuth, requireProTier, async (req, res) => {
   if (UI_HIDDEN.warp) {
     return res.status(403).json({ error: MSG_UI_WARP_OFF });
   }
@@ -1819,7 +1888,7 @@ app.post("/api/warp/stop", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/warp/routing", requireAuth, async (req, res) => {
+app.post("/api/warp/routing", requireAuth, requireProTier, async (req, res) => {
   if (UI_HIDDEN.warp) {
     return res.status(403).json({ error: MSG_UI_WARP_OFF });
   }
@@ -1858,7 +1927,7 @@ app.post("/api/warp/routing", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/clients/disable", requireAuth, async (req, res) => {
+app.post("/api/clients/disable", requireAuth, requireProTier, async (req, res) => {
   const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -1881,7 +1950,7 @@ app.post("/api/clients/disable", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/clients/enable", requireAuth, async (req, res) => {
+app.post("/api/clients/enable", requireAuth, requireProTier, async (req, res) => {
   const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -1931,7 +2000,7 @@ AllowedIPs = ${ips}`;
   }
 });
 
-app.post("/api/clients/disconnect-date", requireAuth, async (req, res) => {
+app.post("/api/clients/disconnect-date", requireAuth, requireProTier, async (req, res) => {
   const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -1971,7 +2040,7 @@ app.post("/api/clients/disconnect-date", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/clients/rename", requireAuth, async (req, res) => {
+app.post("/api/clients/rename", requireAuth, requireProTier, async (req, res) => {
   const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   const rawName = req.body?.name ?? req.body?.clientName;
@@ -1998,7 +2067,7 @@ app.post("/api/clients/rename", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/clients/delete", requireAuth, async (req, res) => {
+app.post("/api/clients/delete", requireAuth, requireProTier, async (req, res) => {
   const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -2045,9 +2114,13 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 setInterval(() => {
-  processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+  if (!IS_COMMUNITY) {
+    processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+  }
 }, SCHEDULER_MS);
 
 setTimeout(() => {
-  processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+  if (!IS_COMMUNITY) {
+    processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+  }
 }, 4000);
