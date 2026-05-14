@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cloudflare WARP внутри контейнера AmneziaWG (wgcf → warp.conf → wg-quick).
-# Запускать на хосте VPS от root. Без Telegram и без QR — только установка и обслуживание туннеля WARP.
+# Запускать на хосте VPS от root: установка и обслуживание туннеля WARP для панели Amnezia Admin.
 # После install управление «кто выходит через WARP» — в веб-панели Amnezia Admin (раздел WARP).
 set -euo pipefail
 
