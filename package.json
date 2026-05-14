@@ -1,6 +1,6 @@
 {
   "name": "amnezia-admin",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Web-панель AmneziaWG: несколько инстансов, WARP, каскад/Endpoint, экспорт .conf (Docker)",
   "license": "MIT",

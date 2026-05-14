@@ -798,9 +798,17 @@ function parseInterfaceKeyValues(head) {
   return out;
 }
 
+/** Имя файла только из ASCII — иначе Node отклоняет заголовок Content-Disposition. */
 function safeExportFilenamePart(name, fallback) {
-  const s = String(name || fallback || "client").replace(/[^\w\u0400-\u04FF\-]+/g, "_");
-  return s.slice(0, 80) || "client";
+  const toAsciiToken = (s) =>
+    String(s ?? "")
+      .normalize("NFKD")
+      .replace(/[^\x20-\x7E]/g, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 80);
+  return toAsciiToken(name) || toAsciiToken(fallback) || "client";
 }
 
 function formatExportAllowedIps(lc, fallback = "0.0.0.0/0, ::/0") {
