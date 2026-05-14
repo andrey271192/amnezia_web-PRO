@@ -45,7 +45,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 
-Футер с ссылками (**Kaskad WebUI**, Boosty, Ozon СБП, Telegram) в админке находится **внизу страницы** — прокрутите ниже таблицы.
+Футер с ссылками (**Amnezia Admin WebUI**, Boosty, Ozon СБП, Telegram) в админке находится **внизу страницы** — прокрутите ниже таблицы.
 
 ### Обновление до новой версии
 
@@ -134,7 +134,7 @@ ADMIN_PASSWORD=localtest node server.js
 
 ## Support links
 
-Как на главной странице установки (**лендинг на порту 80**): **Kaskad WebUI** · GitHub · Boosty · Ozon СБП · Telegram · текст поддержки.
+Как на главной странице установки (**лендинг на порту 80**): **Amnezia Admin WebUI** · GitHub · Boosty · Ozon СБП · Telegram · текст поддержки.
 
 Поддержать проект — поставь звезду на GitHub **И донат**. Связаться с автором — Telegram.
 
