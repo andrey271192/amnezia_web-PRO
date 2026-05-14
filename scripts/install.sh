@@ -43,7 +43,10 @@ trap cleanup EXIT
 if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
   echo "→ Клонирование релиза ${GITHUB_REPO} (${BRANCH})..."
   TMP=$(mktemp -d)
-  curl -fsSL "https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz" \
+  curl -fsSL \
+    -H 'Cache-Control: no-cache' \
+    -H 'Pragma: no-cache' \
+    "https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz" \
     | tar xz -C "${TMP}"
   rm -rf "${INSTALL_DIR}"
   mkdir -p "$(dirname "${INSTALL_DIR}")"
@@ -52,6 +55,16 @@ if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
 fi
 
 mkdir -p "${DATA_DIR}"
+
+# При повторном запуске не менять внешний порт панели, если не указали HOST_PORT явно (по умолчанию 8080).
+PREV_HOST_PORT=""
+if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+  PREV_HOST_PORT="$(docker port "${CONTAINER_NAME}" 3980/tcp 2>/dev/null | head -1 | awk -F: '{print $NF}')"
+  if [[ -n "${PREV_HOST_PORT}" && "${HOST_PORT}" == "8080" ]]; then
+    HOST_PORT="${PREV_HOST_PORT}"
+    echo "→ Уже запущен ${CONTAINER_NAME}: сохраняю внешний порт ${HOST_PORT} (укажите HOST_PORT=… чтобы сменить)."
+  fi
+fi
 
 BOOT_PW=""
 PASS_FILE="/root/amnezia-admin.initial-password"
@@ -69,8 +82,14 @@ else
   echo "→ Первый пароль записан в ${PASS_FILE}"
 fi
 
+DOCKER_BUILD_EXTRA=()
+if [[ "${NO_CACHE:-}" == "1" ]]; then
+  DOCKER_BUILD_EXTRA+=(--no-cache)
+  echo "→ NO_CACHE=1 — сборка без слоя кэша Docker."
+fi
+
 echo "→ Сборка образа amnezia-admin:latest ..."
-docker build -t amnezia-admin:latest "${INSTALL_DIR}"
+docker build "${DOCKER_BUILD_EXTRA[@]}" -t amnezia-admin:latest "${INSTALL_DIR}"
 
 docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
 
@@ -96,7 +115,7 @@ docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
 if [[ "${SKIP_LANDING:-}" != "1" ]] && [[ -d "${INSTALL_DIR}/landing" ]]; then
   printf "window.__AMNEZIA_ADMIN_PORT__='%s';\n" "${HOST_PORT}" >"${INSTALL_DIR}/landing/admin-port.js"
   echo "→ Сборка образа ${LANDING_IMAGE} (страница на порту ${LANDING_PORT})..."
-  docker build -t "${LANDING_IMAGE}" "${INSTALL_DIR}/landing"
+  docker build "${DOCKER_BUILD_EXTRA[@]}" -t "${LANDING_IMAGE}" "${INSTALL_DIR}/landing"
   docker rm -f "${LANDING_CONTAINER}" 2>/dev/null || true
   if docker run -d --name "${LANDING_CONTAINER}" --restart unless-stopped \
     -p "${LANDING_PORT}:80" \

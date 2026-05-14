@@ -42,6 +42,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `SKIP_LANDING` | `0` | `1` — не ставить публичную страницу с футером поддержки |
 | `LANDING_PORT` | `80` | Порт nginx-лендинга (если `80` занят — например `8081`) |
 | `LANDING_CONTAINER` | `amnezia-web-landing` | Имя контейнера лендинга |
+| `NO_CACHE` | `0` | `1` — `docker build --no-cache` при проблемах с обновлением образа |
 
 После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 
@@ -51,19 +52,35 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 Коммиты на GitHub **сами не попадают** в уже запущенный контейнер: нужно заново **скачать код и пересобрать образ**.
 
-Проще всего — та же команда, что при установке (данные в `DATA_DIR`, пароль сохранится):
+Проще всего — та же команда, что при установке (данные в `DATA_DIR`, пароль сохранится). Скрипт **подставит прежний внешний порт** контейнера `amnezia-admin`, если вы не передавали `HOST_PORT` и в коде по умолчанию стоит `8080`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo bash
 ```
 
+Если интерфейс после этого всё ещё старый — принудительно без кэша слоёв Docker:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo NO_CACHE=1 bash
+```
+
 Если проект уже лежит в `/opt/amnezia-admin` через git и вы подтянули изменения (`git pull`), пересоберите без повторной загрузки архива:
 
 ```bash
-cd /opt/amnezia-admin && sudo SKIP_DOWNLOAD=1 HOST_PORT=8080 bash scripts/install.sh
+cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bash scripts/install.sh
 ```
 
-Подставьте свой `HOST_PORT`, если панель не на `8080`. После обновления сделайте в браузере **жёсткое обновление** страницы (Ctrl+Shift+R / ⌘+Shift+R), если интерфейс всё ещё старый.
+Порт при этом возьмётся из уже работающего контейнера так же, как при установке с GitHub.
+
+Подставьте **`HOST_PORT=ваш_порт`** перед `bash`, если нужно явно зафиксировать порт (в том числе сменить его при обновлении).
+
+После обновления сделайте в браузере **жёсткое обновление** страницы (Ctrl+Shift+R / ⌘+Shift+R), если интерфейс всё ещё старый.
+
+Команда на сервере для проверки, что в образ попали новые статические файлы (после установки должно быть **Amnezia Admin WebUI**, не «Kaskad»):
+
+```bash
+sudo docker run --rm amnezia-admin:latest grep -E -o 'Amnezia Admin WebUI|Kaskad' /app/public/index.html | head -1
+```
 
 ---
 
