@@ -1,4 +1,4 @@
-# mnezia_web-PRO
+# amnezia_web-PRO
 
 Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения; при нескольких контейнерах — переключатель **«Инстанс»** (`AWG_PROFILES`); **экспорт .conf** при наличии `last_config`; **новый клиент под каскад** (свой Endpoint и ключи на сервере). **Cloudflare WARP** — *необязательное* дополнение: часть клиентов может выходить в интернет через интерфейс `warp` внутри контейнера AWG (ставится отдельно скриптом на хосте). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
 
@@ -32,7 +32,7 @@
 На сервере под **root** (или через `sudo`), когда репозиторий уже опубликован на GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
 ```
 
 ### Переменные окружения и `sudo`
@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/sc
 1. **`sudo -E bash`** вместо `sudo bash` (для большинства VPS достаточно):
 
 ```bash
-AWG_PROFILES='[{"id":"awg",…}]' curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo -E bash
+AWG_PROFILES='[{"id":"awg",…}]' curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo -E bash
 ```
 
 2. **Файл на VPS** (способ без `-E`): записать JSON **одной строкой** в **`/root/amnezia-admin.awg-profiles.json`** (например `umask 077; printf '%s\n' '[{"id":"awg",…}]' > /root/amnezia-admin.awg-profiles.json`), затем обычный **`curl … | sudo bash`** — установщик подставит профили из файла (см. абзац про снимок ниже таблицы).
@@ -72,7 +72,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `GITHUB_REPO` | `andrey271192/mnezia_web-PRO` | Откуда качать архив |
+| `GITHUB_REPO` | `andrey271192/amnezia_web-PRO` | Откуда качать архив |
 | `BRANCH` | `main` | Ветка |
 | `INSTALL_DIR` | `/opt/amnezia-admin` | Куда распаковать исходники |
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
@@ -114,14 +114,14 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 ```bash
 AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-wg0","confPath":"/opt/amnezia/wireguard/wg0.conf","clientsPath":"/opt/amnezia/wireguard/clientsTable","iface":"wg0","wgBinary":"wg","pskPath":"/opt/amnezia/wireguard/wireguard_psk.key"}]' \
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo -E bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo -E bash
 ```
 
 **Пример 2** — оба конфигурационных набора внутри контейнера **`amnezia-awg`** (файл `wg0.conf` рядом с `awg0.conf` в `/opt/amnezia/awg/`), второй контейнер **`amnezia-awg2`**:
 
 ```bash
 AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-awg","confPath":"/opt/amnezia/awg/wg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"wg0","wgBinary":"wg","pskPath":"/opt/amnezia/awg/wireguard_psk.key"}]' \
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo -E bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo -E bash
 ```
 
 Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — **`awg`**; поле **`pskPath`** желательно указывать явно, если путь к `wireguard_psk.key` нестандартный.
@@ -181,7 +181,7 @@ cd /opt/amnezia-admin
 Пример установки / обновления с частично пустой панелью:
 
 ```bash
-UI_HIDE_SECTIONS=warp,cascade curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo -E bash
+UI_HIDE_SECTIONS=warp,cascade curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo -E bash
 ```
 
 Отдельные флаги **`UI_HIDE_USERS`**, **`UI_HIDE_WARP`**, **`UI_HIDE_CASCADE`** (`1` или `true`) дублируют соответствующий токен.
@@ -213,13 +213,13 @@ UI_HIDE_SECTIONS=warp,cascade curl -fsSL https://raw.githubusercontent.com/andre
 Проще всего — та же команда, что при установке (данные в `DATA_DIR`, пароль и `AWG_PROFILES` сохранятся — профили подтягиваются из файла на VPS или из старого контейнера). Скрипт **подставит прежний внешний порт** контейнера `amnezia-admin`, если вы не передавали `HOST_PORT` и в коде по умолчанию стоит `8080`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
 ```
 
 Если интерфейс после этого всё ещё старый — принудительно без кэша слоёв Docker:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo NO_CACHE=1 bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo NO_CACHE=1 bash
 ```
 
 Если проект уже лежит в `/opt/amnezia-admin` через git и вы подтянули изменения (`git pull`), пересоберите без повторной загрузки архива:
@@ -245,13 +245,13 @@ sudo docker run --rm amnezia-admin:latest grep -Eo 'Новый клиент по
 ## Удаление одной командой
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/uninstall.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/uninstall.sh | sudo bash
 ```
 
 Полная очистка (контейнер, образ, данные панели и каталог `/opt/amnezia-admin`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/uninstall.sh | sudo REMOVE_IMAGE=1 REMOVE_DATA=1 REMOVE_SRC=1 bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/uninstall.sh | sudo REMOVE_IMAGE=1 REMOVE_DATA=1 REMOVE_SRC=1 bash
 ```
 
 ---
@@ -271,7 +271,7 @@ sudo cat /root/amnezia-admin.initial-password
 ### Свой пароль при установке
 
 ```bash
-ADMIN_PASSWORD='ВашНадёжныйПароль' curl -fsSL https://raw.githubusercontent.com/andrey271192/mnezia_web-PRO/main/scripts/install.sh | sudo -E bash
+ADMIN_PASSWORD='ВашНадёжныйПароль' curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo -E bash
 ```
 
 После первого успешного старта переменную `ADMIN_PASSWORD` из команды `docker run` убирайте — пароль уже в томе `DATA_DIR`.
@@ -315,7 +315,7 @@ ADMIN_PASSWORD=localtest node server.js
 
 | Способ | Ссылка |
 |--------|--------|
-| GitHub | [mnezia_web-PRO](https://github.com/andrey271192/mnezia_web-PRO) |
+| GitHub | [amnezia_web-PRO](https://github.com/andrey271192/amnezia_web-PRO) |
 | Boosty | [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate) |
 | Ozon СБП | [Ozon СБП](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) |
 | Telegram | [@lot_andrey](https://t.me/lot_andrey) |

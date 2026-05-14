@@ -2,11 +2,11 @@
   "name": "amnezia-admin",
   "version": "1.1.7",
   "private": true,
-  "description": "mnezia_web-PRO — веб-панель AmneziaWG: несколько инстансов, WARP, каскад/Endpoint, экспорт .conf (Docker)",
+  "description": "amnezia_web-PRO — веб-панель AmneziaWG: несколько инстансов, WARP, каскад/Endpoint, экспорт .conf (Docker)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/andrey271192/mnezia_web-PRO.git"
+    "url": "https://github.com/andrey271192/amnezia_web-PRO.git"
   },
   "type": "module",
   "scripts": {
