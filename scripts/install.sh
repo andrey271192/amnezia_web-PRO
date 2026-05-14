@@ -109,6 +109,26 @@ if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
   fi
 fi
 
+PREV_CONTAINER_ENV=""
+if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+  PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
+fi
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE; do
+  if [[ -z "${!__ui_var:-}" ]] && [[ -n "${PREV_CONTAINER_ENV}" ]]; then
+    PREV_VAL=""
+    while IFS= read -r __line; do
+      if [[ "${__line}" == "${__ui_var}="* ]]; then
+        PREV_VAL="${__line#*=}"
+        break
+      fi
+    done <<<"${PREV_CONTAINER_ENV}"
+    if [[ -n "${PREV_VAL}" ]]; then
+      printf -v "${__ui_var}" '%s' "${PREV_VAL}"
+      echo "→ ${__ui_var} восстановлен из предыдущего контейнера ${CONTAINER_NAME}."
+    fi
+  fi
+done
+
 DOCKER_BUILD_EXTRA=()
 if [[ "${NO_CACHE:-}" == "1" ]]; then
   DOCKER_BUILD_EXTRA+=(--no-cache)
@@ -149,6 +169,12 @@ done
 for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2 EXPORT_CONFIG_SECRET; do
   if [[ -n "${!__export_var:-}" ]]; then
     RUN_ENV+=( -e "${__export_var}=${!__export_var}" )
+  fi
+done
+
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE; do
+  if [[ -n "${!__ui_var:-}" ]]; then
+    RUN_ENV+=( -e "${__ui_var}=${!__ui_var}" )
   fi
 done
 

@@ -13,6 +13,31 @@ const SCHEDULER_MS = Number(process.env.SCHEDULE_DISCONNECT_MS || 60_000);
 /** Если задан, разрешает GET /api/clients/export-config?token=…&clientId=… без сессии (храните секрет только для себя). */
 const EXPORT_CONFIG_SECRET = process.env.EXPORT_CONFIG_SECRET?.trim();
 
+function envTruthy(v) {
+  if (typeof v !== "string") return false;
+  const s = v.trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+/** Какие блоки веб-интерфейса скрыты: `UI_HIDE_SECTIONS=users,warp,cascade` или `UI_HIDE_USERS` и т.д. */
+function resolveUiHidden() {
+  const raw = process.env.UI_HIDE_SECTIONS?.trim();
+  const set = new Set();
+  if (raw) {
+    for (const part of raw.split(",")) {
+      const k = part.trim().toLowerCase();
+      if (k) set.add(k);
+    }
+  }
+  return {
+    users: set.has("users") || envTruthy(process.env.UI_HIDE_USERS),
+    warp: set.has("warp") || envTruthy(process.env.UI_HIDE_WARP),
+    cascade: set.has("cascade") || envTruthy(process.env.UI_HIDE_CASCADE),
+  };
+}
+
+const UI_HIDDEN = resolveUiHidden();
+
 function parseProfilesFromEnv() {
   const raw = process.env.AWG_PROFILES?.trim();
   const fallback = () => {
@@ -1280,7 +1305,17 @@ ensureDataDir();
 loadOrCreateSessionSecret();
 bootstrapPassword();
 
+/** Сообщение для отключённых через UI_HIDE разделов WARP / каскада. */
+const MSG_UI_WARP_OFF = "Раздел Cloudflare WARP отключён на этом сервере (UI_HIDE_SECTIONS / UI_HIDE_WARP).";
+const MSG_UI_CASCADE_OFF =
+  "Каскад отключён на этом сервере (UI_HIDE_SECTIONS / UI_HIDE_CASCADE).";
+
 const app = express();
+if (UI_HIDDEN.users || UI_HIDDEN.warp || UI_HIDDEN.cascade) {
+  console.warn(
+    `UI_HIDDEN: users=${UI_HIDDEN.users} warp=${UI_HIDDEN.warp} cascade=${UI_HIDDEN.cascade}`,
+  );
+}
 app.use(express.json({ limit: "512kb" }));
 
 app.get("/health", (_req, res) => {
@@ -1495,6 +1530,7 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       clients: rows,
       wgShow,
       warp: warpOut,
+      uiHidden: { ...UI_HIDDEN },
     });
   } catch (e) {
     console.error(e);
@@ -1583,6 +1619,9 @@ app.post("/api/clients/export-config", requireAuth, (req, res) => {
  * отдаёт .conf с Endpoint = endpointHost:endpointPort (ваш промежуточный узел).
  */
 app.post("/api/clients/create-cascade", requireAuth, async (req, res) => {
+  if (UI_HIDDEN.cascade) {
+    return res.status(403).json({ error: MSG_UI_CASCADE_OFF });
+  }
   const rt = runtimeFromExportRequest(req);
   let endpointHost;
   try {
@@ -1696,6 +1735,9 @@ AllowedIPs = ${tunnelIp}/32
 });
 
 app.post("/api/warp/start", requireAuth, async (req, res) => {
+  if (UI_HIDDEN.warp) {
+    return res.status(403).json({ error: MSG_UI_WARP_OFF });
+  }
   const rt = runtimeForRequest(req);
   if (!(await warpFileExists(rt, rt.profile.warpConf))) {
     return res.status(400).json({
@@ -1714,6 +1756,9 @@ app.post("/api/warp/start", requireAuth, async (req, res) => {
 });
 
 app.post("/api/warp/stop", requireAuth, async (req, res) => {
+  if (UI_HIDDEN.warp) {
+    return res.status(403).json({ error: MSG_UI_WARP_OFF });
+  }
   const rt = runtimeForRequest(req);
   if (!(await warpFileExists(rt, rt.profile.warpConf))) {
     return res.status(400).json({ error: "WARP не установлен." });
@@ -1728,6 +1773,9 @@ app.post("/api/warp/stop", requireAuth, async (req, res) => {
 });
 
 app.post("/api/warp/routing", requireAuth, async (req, res) => {
+  if (UI_HIDDEN.warp) {
+    return res.status(403).json({ error: MSG_UI_WARP_OFF });
+  }
   const rt = runtimeForRequest(req);
   if (!(await warpFileExists(rt, rt.profile.warpConf))) {
     return res.status(400).json({

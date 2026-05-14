@@ -21,6 +21,10 @@ const warpActionsEl = document.querySelector("#warp-actions");
 const warpClientListEl = document.querySelector("#warp-client-list");
 const warpWgShowEl = document.querySelector("#warp-wg-show");
 
+const cascadePanel = document.querySelector("#cascade-panel");
+const usersPanel = document.querySelector("#users-panel");
+const wgRawDetails = document.querySelector("#wg-raw-details");
+
 const protoSwitch = document.querySelector("#proto-switch");
 const protoSelect = document.querySelector("#proto-select");
 const protoLabel = document.querySelector("#proto-label");
@@ -42,6 +46,23 @@ const dtOk = document.querySelector("#dt-dialog-ok");
 const dtExtra = document.querySelector("#dt-dialog-extra");
 const dtHint = document.querySelector("#dt-dialog-hint");
 const dtScheduleTunnel = document.querySelector("#dt-dialog-schedule-tunnel");
+
+/** Какие панели скрыты настройкой сервера (`UI_HIDE_SECTIONS`). */
+let uiHidden = { users: false, warp: false, cascade: false };
+
+function applyUiHiddenFromPayload(data) {
+  const u = data?.uiHidden;
+  if (u && typeof u === "object") {
+    uiHidden = {
+      users: Boolean(u.users),
+      warp: Boolean(u.warp),
+      cascade: Boolean(u.cascade),
+    };
+  }
+  if (usersPanel) usersPanel.hidden = uiHidden.users;
+  if (wgRawDetails) wgRawDetails.hidden = uiHidden.users;
+  if (cascadePanel) cascadePanel.hidden = uiHidden.cascade;
+}
 
 let dtMode = "disable";
 /** @type {Record<string, unknown> | null} */
@@ -514,6 +535,7 @@ pwForm.addEventListener("submit", async (ev) => {
 
 function renderRows(clients) {
   rowsEl.innerHTML = "";
+  if (uiHidden.users) return;
   clients.forEach((c) => {
     const tr = document.createElement("tr");
 
@@ -617,6 +639,10 @@ function parseIpv4Cidrs(allowedIps) {
 /** @param {{ warp?: Record<string, unknown>; clients: Record<string, unknown>[] }} data */
 function renderWarpPanel(data) {
   if (!warpPanel || !warpStatusLine || !warpActionsEl || !warpClientListEl || !warpWgShowEl) return;
+  if (uiHidden.warp) {
+    warpPanel.hidden = true;
+    return;
+  }
   const w = data.warp;
   if (!w || w.supported === false) {
     warpPanel.hidden = true;
@@ -934,9 +960,15 @@ async function loadClients() {
   try {
     setStatus("Загрузка…", false);
     const data = await api("/api/clients");
+    applyUiHiddenFromPayload(data);
     const pref = data.profileLabel ? `${data.profileLabel} · ` : "";
-    peerCountEl.textContent = `${pref}${data.clients.length} в таблице · ${data.peerCount} peer`;
-    wgShowEl.textContent = data.wgShow || "";
+    if (uiHidden.users) {
+      peerCountEl.textContent = "";
+      wgShowEl.textContent = "";
+    } else {
+      peerCountEl.textContent = `${pref}${data.clients.length} в таблице · ${data.peerCount} peer`;
+      wgShowEl.textContent = data.wgShow || "";
+    }
     renderWarpPanel(data);
     renderRows(data.clients);
     setStatus("", false);
