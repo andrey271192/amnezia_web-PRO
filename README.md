@@ -11,7 +11,7 @@
 На сервере под **root** (или через `sudo`), когда репозиторий уже опубликован на GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-admin/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo bash
 ```
 
 Другой репозиторий или ветка:
@@ -30,7 +30,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `GITHUB_REPO` | `andrey271192/amnezia-admin` | Откуда качать архив |
+| `GITHUB_REPO` | `andrey271192/Amnezia_web` | Откуда качать архив |
 | `BRANCH` | `main` | Ветка |
 | `INSTALL_DIR` | `/opt/amnezia-admin` | Куда распаковать исходники |
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
@@ -47,13 +47,13 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 ## Удаление одной командой
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-admin/main/scripts/uninstall.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/uninstall.sh | sudo bash
 ```
 
 Полная очистка (контейнер, образ, данные панели и каталог `/opt/amnezia-admin`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-admin/main/scripts/uninstall.sh | sudo REMOVE_IMAGE=1 REMOVE_DATA=1 REMOVE_SRC=1 bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/uninstall.sh | sudo REMOVE_IMAGE=1 REMOVE_DATA=1 REMOVE_SRC=1 bash
 ```
 
 ---
@@ -73,7 +73,7 @@ sudo cat /root/amnezia-admin.initial-password
 ### Свой пароль при установке
 
 ```bash
-ADMIN_PASSWORD='ВашНадёжныйПароль' curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-admin/main/scripts/install.sh | sudo -E bash
+ADMIN_PASSWORD='ВашНадёжныйПароль' curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo -E bash
 ```
 
 После первого успешного старта переменную `ADMIN_PASSWORD` из команды `docker run` убирайте — пароль уже в томе `DATA_DIR`.
@@ -115,7 +115,7 @@ ADMIN_PASSWORD=localtest node server.js
 
 | Способ | Ссылка |
 |--------|--------|
-| GitHub | [репозиторий](https://github.com/andrey271192/amnezia-admin) |
+| GitHub | [репозиторий](https://github.com/andrey271192/Amnezia_web) |
 | Boosty | [boosty.to/lot_andrey](https://boosty.to/lot_andrey) |
 | Ozon СБП | _добавьте свою постоянную ссылку СБП сюда и при желании замените цель ссылки «Ozon СБП» в `public/index.html`_ |
 | Telegram | [@lot_andrey](https://t.me/lot_andrey) |
