@@ -53,6 +53,16 @@
 
     <section class="toolbar">
       <div class="pill"><span class="dot ok"></span><span id="proto-label">Протокол: AmneziaWG</span></div>
+      <div class="clock-strip" role="status" aria-live="polite">
+        <div class="clock-row">
+          <span class="muted clock-kind">Сервер</span>
+          <time id="clock-server" class="clock-time">—</time>
+        </div>
+        <div class="clock-row">
+          <span class="muted clock-kind">Браузер</span>
+          <time id="clock-local" class="clock-time">—</time>
+        </div>
+      </div>
       <button type="button" id="refresh" class="btn primary">Обновить</button>
     </section>
 

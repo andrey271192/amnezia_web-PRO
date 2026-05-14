@@ -6,6 +6,8 @@ const loginError = document.querySelector("#login-error");
 
 const logoutBtn = document.querySelector("#logout");
 const refreshBtn = document.querySelector("#refresh");
+const clockServerEl = document.querySelector("#clock-server");
+const clockLocalEl = document.querySelector("#clock-local");
 const rowsEl = document.querySelector("#rows");
 const statusEl = document.querySelector("#status");
 const peerCountEl = document.querySelector("#peer-count");
@@ -129,6 +131,7 @@ dtOk.addEventListener("click", async () => {
 });
 
 function showLogin() {
+  stopClocks();
   loginGate.classList.remove("hidden");
   loginGate.setAttribute("aria-hidden", "false");
   appRoot.classList.add("hidden");
@@ -138,6 +141,7 @@ function showApp() {
   loginGate.classList.add("hidden");
   loginGate.setAttribute("aria-hidden", "true");
   appRoot.classList.remove("hidden");
+  startClocks();
 }
 
 function setStatus(text, isErr) {
@@ -211,6 +215,60 @@ logoutBtn.addEventListener("click", async () => {
 refreshBtn.addEventListener("click", () => {
   loadClients();
 });
+
+const clockFmt = new Intl.DateTimeFormat("ru-RU", {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
+
+/** @type {ReturnType<typeof setInterval> | null} */
+let clockTickId = null;
+/** @type {ReturnType<typeof setInterval> | null} */
+let clockServerPollId = null;
+
+async function refreshServerClock() {
+  try {
+    const t = await api("/api/server-time");
+    const iso = typeof t.iso === "string" ? t.iso : "";
+    clockServerEl.dateTime = iso;
+    const tz = typeof t.timeZone === "string" ? t.timeZone : "";
+    const formatted = typeof t.formatted === "string" ? t.formatted : "";
+    clockServerEl.textContent =
+      formatted.trim() ? `${formatted}${tz ? ` · ${tz}` : ""}` : "—";
+  } catch {
+    clockServerEl.dateTime = "";
+    clockServerEl.textContent = "—";
+  }
+}
+
+function tickLocalClock() {
+  const n = new Date();
+  clockLocalEl.dateTime = n.toISOString();
+  clockLocalEl.textContent = clockFmt.format(n);
+}
+
+function stopClocks() {
+  if (clockTickId !== null) {
+    clearInterval(clockTickId);
+    clockTickId = null;
+  }
+  if (clockServerPollId !== null) {
+    clearInterval(clockServerPollId);
+    clockServerPollId = null;
+  }
+  clockServerEl.dateTime = "";
+  clockLocalEl.dateTime = "";
+  clockServerEl.textContent = "—";
+  clockLocalEl.textContent = "—";
+}
+
+function startClocks() {
+  stopClocks();
+  tickLocalClock();
+  void refreshServerClock();
+  clockTickId = setInterval(tickLocalClock, 1000);
+  clockServerPollId = setInterval(() => void refreshServerClock(), 30_000);
+}
 
 const dtRu = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "short",
@@ -374,6 +432,7 @@ async function loadClients() {
     wgShowEl.textContent = data.wgShow || "";
     renderRows(data.clients);
     setStatus("", false);
+    void refreshServerClock();
   } catch (e) {
     const msg = String(e.message || e);
     if (msg.includes("Unauthorized")) {

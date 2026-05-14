@@ -344,6 +344,24 @@ app.get("/api/session", (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/server-time", requireAuth, (_req, res) => {
+  const now = new Date();
+  let timeZone = "UTC";
+  try {
+    timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || timeZone;
+  } catch {
+    /* ignore */
+  }
+  res.json({
+    iso: now.toISOString(),
+    formatted: now.toLocaleString("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    }),
+    timeZone,
+  });
+});
+
 app.post("/api/login", (req, res) => {
   const pw = req.body?.password;
   if (typeof pw !== "string" || !pw) {

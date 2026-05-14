@@ -205,6 +205,35 @@ h1 {
   flex-wrap: wrap;
 }
 
+.clock-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.clock-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.clock-kind {
+  flex: 0 0 4.25rem;
+}
+
+.clock-time {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
