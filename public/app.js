@@ -82,6 +82,13 @@ function applyEditionPayload(data) {
     upgradePitch: typeof ed.upgradePitch === "string" ? ed.upgradePitch : null,
     showDebugWg: ed.showDebugWg !== false,
   };
+  const titleEl = document.querySelector(".top h1");
+  if (titleEl) {
+    titleEl.textContent =
+      editionState.tier === "community"
+        ? "Пользователи AmneziaWG FREE"
+        : "Пользователи AmneziaWG PRO";
+  }
   const subEl = document.querySelector(".top .sub");
   if (subEl) {
     if (editionState.tier === "community") {
