@@ -548,6 +548,11 @@ function renderRows(clients) {
         btn("Включить", "btn small primary", () => mutate("/api/clients/enable", c.clientId))
       );
     }
+    if (c.exportAvailable) {
+      actTd.appendChild(
+        btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)),
+      );
+    }
     actTd.appendChild(btn("Удалить", "btn small warn", () => confirmDelete(c.name, c.clientId)));
 
     tr.append(nameTd, ipTd, stTd, offTd, actTd);
@@ -701,6 +706,45 @@ function escapeHtml(s) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+async function downloadClientConfig(c) {
+  try {
+    setStatus("Готовлю конфиг…", false);
+    const res = await fetch("/api/clients/export-config", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: c.clientId }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = typeof j.error === "string" ? j.error : msg;
+      } catch {
+        /* сырой текст */
+      }
+      throw new Error(msg);
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = String(c.name || "client")
+      .replace(/[^\w\u0400-\u04FF\-]+/g, "_")
+      .slice(0, 60);
+    a.href = url;
+    a.download = `amnezia-${safe}.conf`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Конфиг скачан.", false);
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
 }
 
 async function renameClient(c) {

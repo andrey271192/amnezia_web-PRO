@@ -119,6 +119,12 @@ for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT
   fi
 done
 
+for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2; do
+  if [[ -n "${!__export_var:-}" ]]; then
+    RUN_ENV+=( -e "${__export_var}=${!__export_var}" )
+  fi
+done
+
 if [[ -n "${BOOT_PW}" ]]; then
   RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
 elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then

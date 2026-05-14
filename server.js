@@ -697,6 +697,243 @@ function stringifyClientsTable(rows) {
   return `${JSON.stringify(rows, null, 4)}\n`;
 }
 
+/** Совпадает с defaults Amnezia Desktop (protocolConstants awg, desktop MTU). */
+const AWG_EXPORT_DEFAULTS = {
+  Jc: "3",
+  Jmin: "10",
+  Jmax: "30",
+  S1: "15",
+  S2: "18",
+  S3: "20",
+  S4: "23",
+  H1: "1020325451",
+  H2: "3288052141",
+  H3: "1766607858",
+  H4: "2528465083",
+  I1: "<r 2><b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>",
+  I2: "",
+  I3: "",
+  I4: "",
+  I5: "",
+};
+
+function parseLastConfigFromClientRow(row) {
+  const ud = row?.userData;
+  if (!ud || typeof ud !== "object") return null;
+  let raw = ud.last_config ?? ud.lastConfig;
+  if (typeof raw === "string") {
+    raw = raw.trim();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (raw && typeof raw === "object") return raw;
+  return null;
+}
+
+function clientHasExportableLastConfig(row) {
+  const lc = parseLastConfigFromClientRow(row);
+  if (!lc) return false;
+  if (String(lc.config ?? lc.nativeConfig ?? "").trim()) return true;
+  const priv = lc.client_priv_key || lc.clientPrivKey;
+  return Boolean(priv && typeof priv === "string");
+}
+
+function pickLc(lc, ...keys) {
+  for (const k of keys) {
+    const v = lc[k];
+    if (v != null && v !== "") return v;
+  }
+  return undefined;
+}
+
+function parseInterfaceKeyValues(head) {
+  const out = {};
+  for (const line of String(head).split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq === -1) continue;
+    const k = t.slice(0, eq).trim();
+    const v = t.slice(eq + 1).trim();
+    out[k] = v;
+  }
+  return out;
+}
+
+function safeExportFilenamePart(name, fallback) {
+  const s = String(name || fallback || "client").replace(/[^\w\u0400-\u04FF\-]+/g, "_");
+  return s.slice(0, 80) || "client";
+}
+
+function formatExportAllowedIps(lc, fallback = "0.0.0.0/0, ::/0") {
+  const v = lc.allowed_ips ?? lc.allowedIps;
+  if (Array.isArray(v)) {
+    const joined = v.map(String).join(", ");
+    return joined.trim() || fallback;
+  }
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return fallback;
+}
+
+async function wgPubkeyFromPrivate(rt, privKeyB64) {
+  const key = String(privKeyB64).trim();
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(key)) {
+    throw new Error("Некорректный формат приватного ключа сервера в awg0.conf");
+  }
+  const q = key.replace(/'/g, `'\\''`);
+  const out = await rt.dockerExec(`printf '%s\\n' '${q}' | ${rt.profile.wgBinary} pubkey`);
+  const pub = out.trim().split(/\s+/)[0];
+  if (!pub) throw new Error("Не удалось получить публичный ключ сервера (wg pubkey).");
+  return pub;
+}
+
+function tunnelClientIpv4(peer, lc, row) {
+  const fromLc = pickLc(lc, "client_ip", "clientIp");
+  if (fromLc) return String(fromLc).replace(/\/\d+$/, "").trim();
+  if (peer?.allowedIPs) {
+    const m = String(peer.allowedIPs).match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+    if (m) return m[1];
+  }
+  const ud = row?.userData || {};
+  const udIp = ud.allowedIps || ud.preservedAllowedIPs;
+  if (udIp) {
+    const m = String(udIp).match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+    if (m) return m[1];
+  }
+  throw new Error(
+    "Нет client_ip в last_config и не удалось взять IPv4 из AllowedIPs peer или из записи клиента (выключен без сохранённого адреса).",
+  );
+}
+
+function resolveExportEndpointHost(lc, req) {
+  const env = process.env.CLIENT_CONFIG_ENDPOINT?.trim();
+  if (env) return env;
+  const hn = pickLc(lc, "hostName", "hostname", "host");
+  if (hn && String(hn).trim()) return String(hn).trim();
+  const h = req.headers.host;
+  if (h && typeof h === "string") {
+    const hostPart = h.split(":")[0].trim();
+    if (hostPart && hostPart !== "localhost") return hostPart;
+  }
+  throw new Error(
+    "Не удалось определить Endpoint. Задайте CLIENT_CONFIG_ENDPOINT для контейнера панели (публичный IP или DNS VPS) или hostName в last_config клиента.",
+  );
+}
+
+async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
+  const native = String(lc.config ?? lc.nativeConfig ?? "").trim();
+  if (native) return native;
+
+  const priv = pickLc(lc, "client_priv_key", "clientPrivKey");
+  if (!priv || typeof priv !== "string") {
+    throw new Error(
+      "В last_config нет готового текста (config) и нет client_priv_key — восстановить .conf с сервера нельзя.",
+    );
+  }
+
+  const peer = conf.peers.find((p) => p.publicKey === row.clientId);
+  const tunnelIp = tunnelClientIpv4(peer || {}, lc, row);
+
+  let serverPub = pickLc(lc, "server_pub_key", "serverPubKey");
+  if (!serverPub && ifaceMap.PrivateKey) {
+    serverPub = await wgPubkeyFromPrivate(rt, ifaceMap.PrivateKey);
+  }
+  if (!serverPub) {
+    throw new Error("Нет server_pub_key в last_config и PrivateKey в секции [Interface] сервера.");
+  }
+
+  const psk = pickLc(lc, "psk_key", "pskKey");
+  if (!psk || typeof psk !== "string") {
+    throw new Error("В last_config нет psk_key (общий ключ с сервером).");
+  }
+
+  const endpointHost = resolveExportEndpointHost(lc, req);
+  const listenPort = ifaceMap.ListenPort ? Number(ifaceMap.ListenPort) : NaN;
+  const portNum = Number(pickLc(lc, "port")) || (Number.isFinite(listenPort) ? listenPort : NaN);
+  const defaultPort = rt.profile.wgBinary === "awg" ? 55424 : 51820;
+  const port = Number.isFinite(portNum) && portNum > 0 ? portNum : defaultPort;
+
+  const dns1 = String(pickLc(lc, "dns1") || process.env.CLIENT_EXPORT_DNS1?.trim() || "8.8.8.8");
+  const dns2 = String(pickLc(lc, "dns2") || process.env.CLIENT_EXPORT_DNS2?.trim() || "8.8.4.4");
+  const peerAllowed = formatExportAllowedIps(lc);
+  const keepAlive = String(pickLc(lc, "persistent_keep_alive", "persistentKeepAlive") || "25");
+  const mtuVal = pickLc(lc, "mtu", "MTU");
+  const mtuLine = mtuVal ? `MTU = ${String(mtuVal).trim()}\n` : "";
+
+  if (rt.profile.wgBinary === "awg") {
+    const Jc = String(pickLc(lc, "Jc", "junk_packet_count", "junkPacketCount") ?? AWG_EXPORT_DEFAULTS.Jc);
+    const Jmin = String(pickLc(lc, "Jmin", "junk_packet_min_size", "junkPacketMinSize") ?? AWG_EXPORT_DEFAULTS.Jmin);
+    const Jmax = String(pickLc(lc, "Jmax", "junk_packet_max_size", "junkPacketMaxSize") ?? AWG_EXPORT_DEFAULTS.Jmax);
+    const S1 = String(pickLc(lc, "S1", "init_packet_junk_size", "initPacketJunkSize") ?? AWG_EXPORT_DEFAULTS.S1);
+    const S2 = String(pickLc(lc, "S2", "response_packet_junk_size", "responsePacketJunkSize") ?? AWG_EXPORT_DEFAULTS.S2);
+    const S3 = String(
+      pickLc(lc, "S3", "cookie_reply_packet_junk_size", "cookieReplyPacketJunkSize") ?? AWG_EXPORT_DEFAULTS.S3,
+    );
+    const S4 = String(
+      pickLc(lc, "S4", "transport_packet_junk_size", "transportPacketJunkSize") ?? AWG_EXPORT_DEFAULTS.S4,
+    );
+    const H1 = String(pickLc(lc, "H1", "init_packet_magic_header", "initPacketMagicHeader") ?? AWG_EXPORT_DEFAULTS.H1);
+    const H2 = String(
+      pickLc(lc, "H2", "response_packet_magic_header", "responsePacketMagicHeader") ?? AWG_EXPORT_DEFAULTS.H2,
+    );
+    const H3 = String(
+      pickLc(lc, "H3", "underload_packet_magic_header", "underloadPacketMagicHeader") ?? AWG_EXPORT_DEFAULTS.H3,
+    );
+    const H4 = String(
+      pickLc(lc, "H4", "transport_packet_magic_header", "transportPacketMagicHeader") ?? AWG_EXPORT_DEFAULTS.H4,
+    );
+    const I1 = String(pickLc(lc, "I1", "special_junk_1", "specialJunk1") ?? AWG_EXPORT_DEFAULTS.I1);
+    const I2 = String(pickLc(lc, "I2", "special_junk_2", "specialJunk2") ?? AWG_EXPORT_DEFAULTS.I2);
+    const I3 = String(pickLc(lc, "I3", "special_junk_3", "specialJunk3") ?? AWG_EXPORT_DEFAULTS.I3);
+    const I4 = String(pickLc(lc, "I4", "special_junk_4", "specialJunk4") ?? AWG_EXPORT_DEFAULTS.I4);
+    const I5 = String(pickLc(lc, "I5", "special_junk_5", "specialJunk5") ?? AWG_EXPORT_DEFAULTS.I5);
+
+    return `[Interface]
+Address = ${tunnelIp}/32
+DNS = ${dns1}, ${dns2}
+PrivateKey = ${priv.trim()}
+Jc = ${Jc}
+Jmin = ${Jmin}
+Jmax = ${Jmax}
+S1 = ${S1}
+S2 = ${S2}
+S3 = ${S3}
+S4 = ${S4}
+H1 = ${H1}
+H2 = ${H2}
+H3 = ${H3}
+H4 = ${H4}
+I1 = ${I1}
+I2 = ${I2}
+I3 = ${I3}
+I4 = ${I4}
+I5 = ${I5}
+${mtuLine}[Peer]
+PublicKey = ${String(serverPub).trim()}
+PresharedKey = ${String(psk).trim()}
+AllowedIPs = ${peerAllowed}
+Endpoint = ${endpointHost}:${port}
+PersistentKeepalive = ${keepAlive}
+`;
+  }
+
+  return `[Interface]
+Address = ${tunnelIp}/32
+DNS = ${dns1}, ${dns2}
+PrivateKey = ${priv.trim()}
+${mtuLine}[Peer]
+PublicKey = ${String(serverPub).trim()}
+PresharedKey = ${String(psk).trim()}
+AllowedIPs = ${peerAllowed}
+Endpoint = ${endpointHost}:${port}
+PersistentKeepalive = ${keepAlive}
+`;
+}
+
 async function disableClient(rt, clientId, ts) {
   await rt.backupRemoteFiles();
   const { conf, clients } = await rt.loadState();
@@ -1076,6 +1313,7 @@ app.get("/api/clients", requireAuth, async (req, res) => {
           Boolean(warpMeta.supported && warpMeta.installed) &&
           activeInConf &&
           peerUsesWarp(peer, warpSelected),
+        exportAvailable: clientHasExportableLastConfig(c),
       };
     });
     const warpOut =
@@ -1100,6 +1338,47 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       wgShow,
       warp: warpOut,
     });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/clients/export-config", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
+  const clientId = req.body?.clientId;
+  if (!clientId || typeof clientId !== "string") {
+    res.status(400).json({ error: "Укажите clientId" });
+    return;
+  }
+  try {
+    const { conf, clients } = await rt.loadState();
+    const row = clients.find((c) => c.clientId === clientId);
+    if (!row) {
+      res.status(404).json({ error: "Клиент не найден в clientsTable" });
+      return;
+    }
+    const lc = parseLastConfigFromClientRow(row);
+    if (!lc) {
+      res.status(404).json({
+        error:
+          "На сервере нет userData.last_config для этого клиента. Полный конфиг хранится в приложении Amnezia на устройстве, где ключ создавали (или синхронизируйте клиентов с сервером из приложения).",
+      });
+      return;
+    }
+    const ifaceMap = parseInterfaceKeyValues(conf.head);
+    let text;
+    try {
+      text = await buildClientConfExport(rt, lc, ifaceMap, req, row, conf);
+    } catch (e) {
+      res.status(400).json({ error: String(e.message || e) });
+      return;
+    }
+    const ud = row.userData || {};
+    const baseName = safeExportFilenamePart(ud.clientName, clientId.slice(0, 12));
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="amnezia-${baseName}.conf"`);
+    res.send(text);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e.message || e) });
