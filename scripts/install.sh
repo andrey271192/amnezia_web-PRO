@@ -42,16 +42,34 @@ trap cleanup EXIT
 
 if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
   echo "→ Клонирование релиза ${GITHUB_REPO} (${BRANCH})..."
+  echo "→ Скачивание tar.gz с GitHub (вывода может не быть 1–10 мин.; при блокировках задайте зеркало GITHUB_REPO_URL_OVERRIDE или см. CURL_MAX_TIME ниже)."
   TMP=$(mktemp -d)
-  curl -fsSL \
-    -H 'Cache-Control: no-cache' \
-    -H 'Pragma: no-cache' \
-    "https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz" \
-    | tar xz -C "${TMP}"
+  CURL_OPTS=(
+    -fsSL
+    -H 'Cache-Control: no-cache'
+    -H 'Pragma: no-cache'
+    --connect-timeout "${CURL_CONNECT_TIMEOUT:-30}"
+    --max-time "${CURL_MAX_TIME:-900}"
+    --retry "${CURL_RETRY:-2}"
+    --retry-delay "${CURL_RETRY_DELAY:-5}"
+    --retry-connrefused
+  )
+  if [[ "${INSTALL_SCRIPT_VERBOSE:-}" == "1" ]]; then CURL_OPTS+=(--progress-bar); fi
+  CURL_URL="${GITHUB_REPO_URL_OVERRIDE:-}"
+  if [[ -z "${CURL_URL}" ]]; then
+    CURL_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz"
+  fi
+  if ! curl "${CURL_OPTS[@]}" "${CURL_URL}" | tar xz -C "${TMP}"; then
+    echo "Ошибка: не удалось скачать или распаковать архив (${CURL_URL})."
+    echo "Подсказка: проверьте ping/curl до github.com, при необходимости export GITHUB_REPO_URL_OVERRIDE='…' или INSTALL_SCRIPT_VERBOSE=1."
+    exit 1
+  fi
+  echo "→ Перенос распакованного дерева в ${INSTALL_DIR}…"
   rm -rf "${INSTALL_DIR}"
   mkdir -p "$(dirname "${INSTALL_DIR}")"
   mv "${TMP}/${REPO_SLUG}-${BRANCH}" "${INSTALL_DIR}"
   TMP=""
+  echo "→ Источники на месте."
 fi
 
 mkdir -p "${DATA_DIR}"
@@ -59,7 +77,12 @@ mkdir -p "${DATA_DIR}"
 # При повторном запуске не менять внешний порт панели, если не указали HOST_PORT явно (по умолчанию 8080).
 PREV_HOST_PORT=""
 if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-  PREV_HOST_PORT="$(docker port "${CONTAINER_NAME}" 3980/tcp 2>/dev/null | head -1 | awk -F: '{print $NF}')"
+  # Контейнер может быть остановлен — `docker port` тогда код ≠ 0; при pipefail без этого блока скрипт выходит молча.
+  __dock_port_out=""
+  __dock_port_out="$(docker port "${CONTAINER_NAME}" 3980/tcp 2>/dev/null)" || :
+  if [[ -n "${__dock_port_out}" ]]; then
+    PREV_HOST_PORT="$(printf '%s\n' "${__dock_port_out}" | head -n1 | awk -F: '{print $NF}')" || PREV_HOST_PORT=""
+  fi
   if [[ -n "${PREV_HOST_PORT}" && "${HOST_PORT}" == "8080" ]]; then
     HOST_PORT="${PREV_HOST_PORT}"
     echo "→ Уже запущен ${CONTAINER_NAME}: сохраняю внешний порт ${HOST_PORT} (укажите HOST_PORT=… чтобы сменить)."
@@ -110,7 +133,9 @@ if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
 fi
 
 if [[ -z "${AWG_PROFILES:-}" ]]; then
-  __awg_multi_count="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^amnezia-awg' | wc -l | tr -d '[:space:]')"
+  __awg_multi_count="$(
+    docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { c++ } END { print c + 0 }' | tr -d '[:space:]'
+  )"
   if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
     echo "⚠ Запущено ${__awg_multi_count} контейнеров с именами amnezia-awg*, но AWG_PROFILES не задан."
     echo "  Переключатель «Инстанс» в панели не появится: см. README, раздел «Несколько инстансов» и «Переменные окружения и sudo»."
