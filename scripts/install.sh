@@ -175,7 +175,7 @@ if [[ "${SKIP_LANDING:-}" != "1" ]] && [[ -d "${INSTALL_DIR}/landing" ]]; then
   if docker run -d --name "${LANDING_CONTAINER}" --restart unless-stopped \
     -p "${LANDING_PORT}:80" \
     "${LANDING_IMAGE}"; then
-    echo "→ Лендинг с блоком поддержки: http://${IP:-SERVER_IP}:${LANDING_PORT}/"
+    echo "→ Публичная страница (лендинг): http://${IP:-SERVER_IP}:${LANDING_PORT}/"
   else
     echo "⚠ Не удалось запустить лендинг (часто порт ${LANDING_PORT} занят). Поставьте LANDING_PORT=8081 или SKIP_LANDING=1."
   fi
@@ -187,7 +187,7 @@ echo ""
 echo "=== Готово ==="
 echo "Админ-панель: http://${IP:-SERVER_IP}:${HOST_PORT}"
 if [[ "${SKIP_LANDING:-}" != "1" ]]; then
-  echo "Страница с поддержкой проекта: http://${IP:-SERVER_IP}:${LANDING_PORT}/"
+  echo "Лендинг для пользователей: http://${IP:-SERVER_IP}:${LANDING_PORT}/ (ссылки доната автора — только в админ-панели)"
 fi
 if [[ -f "${PASS_FILE}" ]]; then
   echo "Первый пароль: $(cat "${PASS_FILE}")"
