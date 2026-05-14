@@ -39,8 +39,11 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `ADMIN_PASSWORD` | _(генерируется)_ | Первый пароль вместо файла |
 | `SKIP_DOWNLOAD` | `0` | `1` — не качать GitHub, собрать из `INSTALL_DIR` |
 | `ALLOW_DEFAULT_PASSWORD` | `0` | `1` — см. раздел «Пароль» ниже |
+| `SKIP_LANDING` | `0` | `1` — не ставить публичную страницу с футером поддержки |
+| `LANDING_PORT` | `80` | Порт nginx-лендинга (если `80` занят — например `8081`) |
+| `LANDING_CONTAINER` | `amnezia-web-landing` | Имя контейнера лендинга |
 
-После установки откройте `http://IP_СЕРВЕРА:8080`.
+После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 
 ---
 
@@ -111,20 +114,22 @@ ADMIN_PASSWORD=localtest node server.js
 
 ## Support links
 
-Те же способы поддержки и контакты, что в проекте [domen_hydra](https://github.com/andrey271192/domen_hydra):
+Как на главной странице установки (**лендинг на порту 80**): **Kaskad WebUI** · GitHub · Boosty · Ozon СБП · Telegram · текст поддержки.
 
-Если проект оказался полезным — буду рад поддержке. Это помогает развивать и поддерживать его дальше.
+Поддержать проект — поставь звезду на GitHub **И донат**. Связаться с автором — Telegram.
 
 | Способ | Ссылка |
 |--------|--------|
 | GitHub | [Amnezia_web](https://github.com/andrey271192/Amnezia_web) |
 | Boosty | [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate) |
-| Ozon СБП | [ссылка оплаты Ozon](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) |
-| Telegram | [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, идеи, обратная связь |
+| Ozon СБП | [Ozon СБП](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) |
+| Telegram | [@lot_andrey](https://t.me/lot_andrey) |
 
-Файл [`.github/FUNDING.yml`](.github/FUNDING.yml) задаёт кнопку **Sponsor** на GitHub (как в [domen_hydra](https://github.com/andrey271192/domen_hydra)).
+Ссылки совпадают с блоком в репозитории [domen_hydra](https://github.com/andrey271192/domen_hydra) (Boosty / Ozon), отображаются на **публичной странице** после установки и в футере админ-панели.
 
-Тот же блок поддержки продублирован в **футере веб-интерфейса**.
+Файл [`.github/FUNDING.yml`](.github/FUNDING.yml) задаёт кнопку **Sponsor** на GitHub.
+
+Тот же блок поддержки продублирован в **футере веб-интерфейса** и на **`http://сервер:80/`** (если лендинг не отключён).
 
 ---
 

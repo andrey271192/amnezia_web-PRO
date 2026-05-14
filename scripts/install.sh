@@ -8,6 +8,9 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/amnezia-admin}"
 DATA_DIR="${DATA_DIR:-/opt/amnezia-admin-data}"
 CONTAINER_NAME="${CONTAINER_NAME:-amnezia-admin}"
 HOST_PORT="${HOST_PORT:-8080}"
+LANDING_CONTAINER="${LANDING_CONTAINER:-amnezia-web-landing}"
+LANDING_IMAGE="${LANDING_IMAGE:-amnezia-web-landing:latest}"
+LANDING_PORT="${LANDING_PORT:-80}"
 
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -81,6 +84,8 @@ elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:
   RUN_ENV+=( -e "ALLOW_DEFAULT_PASSWORD=1" )
 fi
 
+IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+
 docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
   -p "${HOST_PORT}:3980" \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -88,10 +93,28 @@ docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
   "${RUN_ENV[@]}" \
   amnezia-admin:latest
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+if [[ "${SKIP_LANDING:-}" != "1" ]] && [[ -d "${INSTALL_DIR}/landing" ]]; then
+  printf "window.__AMNEZIA_ADMIN_PORT__='%s';\n" "${HOST_PORT}" >"${INSTALL_DIR}/landing/admin-port.js"
+  echo "→ Сборка образа ${LANDING_IMAGE} (страница на порту ${LANDING_PORT})..."
+  docker build -t "${LANDING_IMAGE}" "${INSTALL_DIR}/landing"
+  docker rm -f "${LANDING_CONTAINER}" 2>/dev/null || true
+  if docker run -d --name "${LANDING_CONTAINER}" --restart unless-stopped \
+    -p "${LANDING_PORT}:80" \
+    "${LANDING_IMAGE}"; then
+    echo "→ Лендинг с блоком поддержки: http://${IP:-SERVER_IP}:${LANDING_PORT}/"
+  else
+    echo "⚠ Не удалось запустить лендинг (часто порт ${LANDING_PORT} занят). Поставьте LANDING_PORT=8081 или SKIP_LANDING=1."
+  fi
+else
+  echo "→ Лендинг пропущен (SKIP_LANDING=1 или нет каталога landing)."
+fi
+
 echo ""
 echo "=== Готово ==="
-echo "Откройте в браузере: http://${IP:-SERVER_IP}:${HOST_PORT}"
+echo "Админ-панель: http://${IP:-SERVER_IP}:${HOST_PORT}"
+if [[ "${SKIP_LANDING:-}" != "1" ]]; then
+  echo "Страница с поддержкой проекта: http://${IP:-SERVER_IP}:${LANDING_PORT}/"
+fi
 if [[ -f "${PASS_FILE}" ]]; then
   echo "Первый пароль: $(cat "${PASS_FILE}")"
 fi

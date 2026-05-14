@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сервер · AmneziaWG</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page">
+  <main class="landing-main">
+    <p class="eyebrow">Этот сервер</p>
+    <h1>Управление AmneziaWG</h1>
+    <p class="lead">
+      Здесь установлена админ-панель для клиентов VPN. Перейдите по ссылке ниже (порт задаётся при установке, по умолчанию <strong>8080</strong>).
+    </p>
+    <p class="admin-row" id="admin-row"></p>
+  </main>
+
+  <footer class="support-footer">
+    <div class="support-line">
+      <strong class="support-title">Kaskad WebUI</strong>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://github.com/andrey271192/Amnezia_web" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener noreferrer">💖 Boosty</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener noreferrer">💳 Ozon&nbsp;СБП</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">✉️ Telegram&nbsp;@lot_andrey</a>
+    </div>
+    <p class="support-blurb">
+      Поддержать проект — поставь звезду на GitHub И донат. Связаться с автором — Telegram.
+    </p>
+  </footer>
+
+  <script src="admin-port.js"></script>
+  <script>
+    (function () {
+      var port =
+        (typeof window.__AMNEZIA_ADMIN_PORT__ !== "undefined" && window.__AMNEZIA_ADMIN_PORT__) || "8080";
+      var h = location.hostname || "";
+      var proto = location.protocol || "http:";
+      var url = proto + "//" + h + ":" + port + "/";
+      var el = document.getElementById("admin-row");
+      if (el) {
+        el.innerHTML =
+          '<a class="admin-btn" href="' +
+          url +
+          '">Открыть админ-панель</a> <span class="muted-inline">' +
+          url +
+          "</span>";
+      }
+    })();
+  </script>
+</body>
+</html>

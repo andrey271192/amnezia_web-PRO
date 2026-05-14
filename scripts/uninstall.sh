@@ -16,8 +16,16 @@ need_root() {
 
 need_root
 
+echo "→ Останавливаю лендинг ${LANDING_CONTAINER:-amnezia-web-landing}..."
+docker rm -f "${LANDING_CONTAINER:-amnezia-web-landing}" 2>/dev/null || echo "(лендинг уже отсутствует)"
+
 echo "→ Останавливаю контейнер ${CONTAINER_NAME}..."
 docker rm -f "${CONTAINER_NAME}" 2>/dev/null || echo "(контейнер уже отсутствует)"
+
+if [[ "${REMOVE_LANDING_IMAGE:-}" == "1" ]]; then
+  echo "→ Удаляю образ ${LANDING_IMAGE:-amnezia-web-landing:latest}..."
+  docker rmi "${LANDING_IMAGE:-amnezia-web-landing:latest}" 2>/dev/null || true
+fi
 
 if [[ "${REMOVE_IMAGE:-}" == "1" ]]; then
   echo "→ Удаляю образ ${IMAGE_NAME}..."
@@ -35,4 +43,4 @@ if [[ "${REMOVE_SRC:-}" == "1" ]]; then
 fi
 
 echo "Готово."
-echo "Подсказка: REMOVE_DATA=1 REMOVE_SRC=1 REMOVE_IMAGE=1 curl ... | sudo bash — полная очистка."
+echo "Подсказка: REMOVE_LANDING_IMAGE=1 — удалить образ лендинга; REMOVE_DATA=1 REMOVE_SRC=1 REMOVE_IMAGE=1 curl ... | sudo bash — полная очистка."
