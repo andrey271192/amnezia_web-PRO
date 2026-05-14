@@ -29,7 +29,7 @@
       <div>
         <p class="eyebrow">Панель сервера</p>
         <h1>Пользователи AmneziaWG</h1>
-        <p class="sub">Дату отключения вы задаёте сами: при нажатии «Выключить» или кнопкой «Задать дату» в колонке «Последнее отключение». Время берётся как локальное на вашем компьютере.</p>
+        <p class="sub">Дату отключения вы задаёте сами: при «Выключить» или в диалоге «Задать дату» (для активных клиентов там можно отметить выключение из туннеля). Время — локальное на вашем компьютере.</p>
       </div>
       <div class="token-box">
         <div class="session-actions">
@@ -108,6 +108,13 @@
       <p class="muted" id="dt-dialog-client"></p>
       <label for="dt-dialog-input">Дата и время</label>
       <input type="datetime-local" id="dt-dialog-input" step="60">
+      <div id="dt-dialog-extra" class="dt-dialog-extra hidden">
+        <p class="dt-dialog-hint" id="dt-dialog-hint"></p>
+        <label class="dt-checkbox-label">
+          <input type="checkbox" id="dt-dialog-also-disable">
+          Выключить клиента из туннеля AmneziaWG (убрать из awg0.conf)
+        </label>
+      </div>
       <div class="dt-dialog-actions">
         <button type="button" class="btn ghost" id="dt-dialog-cancel">Отмена</button>
         <button type="button" class="btn primary" id="dt-dialog-ok">Подтвердить</button>

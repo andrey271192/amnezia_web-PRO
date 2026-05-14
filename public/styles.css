@@ -443,6 +443,32 @@ tr:last-child td {
   font: inherit;
 }
 
+.dt-dialog-extra {
+  margin-top: 0.85rem;
+}
+
+.dt-dialog-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.dt-checkbox-label {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dt-checkbox-label input {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
 .dt-dialog-actions {
   display: flex;
   gap: 0.5rem;

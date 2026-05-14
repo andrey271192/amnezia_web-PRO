@@ -23,9 +23,12 @@ const dtClientEl = document.querySelector("#dt-dialog-client");
 const dtInput = document.querySelector("#dt-dialog-input");
 const dtCancel = document.querySelector("#dt-dialog-cancel");
 const dtOk = document.querySelector("#dt-dialog-ok");
+const dtExtra = document.querySelector("#dt-dialog-extra");
+const dtHint = document.querySelector("#dt-dialog-hint");
+const dtAlsoDisable = document.querySelector("#dt-dialog-also-disable");
 
 let dtMode = "disable";
-/** @type {{ clientId: string, name: string } | null} */
+/** @type {Record<string, unknown> | null} */
 let dtClient = null;
 
 function isoToDatetimeLocal(iso) {
@@ -54,6 +57,8 @@ function openDisableDialog(c) {
   dtClientEl.textContent = c.name;
   dtOk.textContent = "Выключить";
   dtInput.value = isoToDatetimeLocal(new Date().toISOString());
+  dtExtra.classList.add("hidden");
+  dtAlsoDisable.checked = false;
   dtDialog.showModal();
 }
 
@@ -66,6 +71,15 @@ function openEditDisconnectDialog(c) {
   const iso =
     c.lastDisconnectedAt || (!c.activeInConf && c.disabledAt) || new Date().toISOString();
   dtInput.value = isoToDatetimeLocal(iso);
+  if (c.activeInConf) {
+    dtExtra.classList.remove("hidden");
+    dtHint.textContent =
+      "Без галочки меняется только дата в таблице — в туннеле клиент остаётся. Чтобы реально отключить ключ, включите «Выключить из туннеля».";
+    dtAlsoDisable.checked = false;
+  } else {
+    dtExtra.classList.add("hidden");
+    dtAlsoDisable.checked = false;
+  }
   dtDialog.showModal();
 }
 
@@ -91,11 +105,19 @@ dtOk.addEventListener("click", async () => {
         body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
       });
     } else {
-      setStatus("Сохраняю дату…", false);
-      await api("/api/clients/disconnect-date", {
-        method: "POST",
-        body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
-      });
+      const alsoTunnel = Boolean(dtAlsoDisable.checked && dtClient.activeInConf);
+      setStatus(alsoTunnel ? "Выключаю из туннеля…" : "Сохраняю дату…", false);
+      if (alsoTunnel) {
+        await api("/api/clients/disable", {
+          method: "POST",
+          body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
+        });
+      } else {
+        await api("/api/clients/disconnect-date", {
+          method: "POST",
+          body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
+        });
+      }
     }
     dtDialog.close();
     dtClient = null;
