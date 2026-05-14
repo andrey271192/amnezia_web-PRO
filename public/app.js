@@ -8,6 +8,7 @@ const logoutBtn = document.querySelector("#logout");
 const refreshBtn = document.querySelector("#refresh");
 const clockServerEl = document.querySelector("#clock-server");
 const clockLocalEl = document.querySelector("#clock-local");
+const clockZoneDiffEl = document.querySelector("#clock-zone-diff");
 const clockSyncBtn = document.querySelector("#clock-sync");
 const rowsEl = document.querySelector("#rows");
 const statusEl = document.querySelector("#status");
@@ -320,7 +321,9 @@ function tickServerClockDisplay() {
 
 async function refreshServerClock() {
   try {
-    const t = await api("/api/server-time");
+    const tz = browserTimeZoneLabel();
+    const q = tz ? `?browserTz=${encodeURIComponent(tz)}` : "";
+    const t = await api(`/api/server-time${q}`);
     const iso = typeof t.iso === "string" ? t.iso : "";
     const parsed = new Date(iso).getTime();
     if (!iso || Number.isNaN(parsed)) {
@@ -332,11 +335,28 @@ async function refreshServerClock() {
       typeof t.timeZone === "string" && t.timeZone.trim() ? t.timeZone.trim() : "UTC";
     serverTzFmtCached = buildServerTzFmt(serverDisplayTz);
     tickServerClockDisplay();
+    if (clockZoneDiffEl) {
+      const hint = typeof t.zoneCompareHint === "string" ? t.zoneCompareHint.trim() : "";
+      if (hint) {
+        clockZoneDiffEl.textContent = hint;
+        clockZoneDiffEl.classList.remove("hidden");
+        clockZoneDiffEl.classList.toggle("clock-zone-diff--accent", t.zoneSame === false);
+      } else {
+        clockZoneDiffEl.textContent = "";
+        clockZoneDiffEl.classList.add("hidden");
+        clockZoneDiffEl.classList.remove("clock-zone-diff--accent");
+      }
+    }
   } catch {
     serverAnchorUtcMs = null;
     serverTzFmtCached = null;
     clockServerEl.dateTime = "";
     clockServerEl.textContent = "—";
+    if (clockZoneDiffEl) {
+      clockZoneDiffEl.textContent = "";
+      clockZoneDiffEl.classList.add("hidden");
+      clockZoneDiffEl.classList.remove("clock-zone-diff--accent");
+    }
   }
 }
 
@@ -369,6 +389,11 @@ function stopClocks() {
   clockLocalEl.dateTime = "";
   clockServerEl.textContent = "—";
   clockLocalEl.textContent = "—";
+  if (clockZoneDiffEl) {
+    clockZoneDiffEl.textContent = "";
+    clockZoneDiffEl.classList.add("hidden");
+    clockZoneDiffEl.classList.remove("clock-zone-diff--accent");
+  }
 }
 
 function startClocks() {
@@ -386,8 +411,8 @@ async function loadTimeSyncCaps() {
     const c = await api("/api/time-sync-capabilities");
     if (hint) {
       hint.textContent = c.hostTimeSync
-        ? `Через SSH на root@${c.sshHost}. Часовой пояс строки «Сервер»: ${c.serverClockTimeZone}. Пароль не сохраняется.`
-        : `Авто-синхронизация по SSH недоступна (или TIME_SYNC_DISABLED). Пояс «Сервер»: ${c.serverClockTimeZone}. Задайте DISPLAY_TZ или TZ для контейнера панели — см. README.`;
+        ? `Записывается UTC-момент с этого устройства на хост по SSH (root@${c.sshHost}). Пояс строки «Сервер»: ${c.serverClockTimeZone}. Пароль не сохраняется.`
+        : `Авто-синхронизация по SSH недоступна (или TIME_SYNC_DISABLED). Пояс «Сервер»: ${c.serverClockTimeZone}. Задайте TZ контейнера панели при необходимости — см. README.`;
     }
     if (btn) btn.disabled = !c.hostTimeSync;
   } catch {
@@ -404,13 +429,13 @@ document.querySelector("#sync-host-time")?.addEventListener("click", async () =>
     return;
   }
   try {
-    setStatus("Синхронизация времени хоста…", false);
+    setStatus("Беру время с этого устройства и отправляю на хост…", false);
     await api("/api/sync-host-time", {
       method: "POST",
       body: JSON.stringify({ rootPassword: pw, unixMs: Date.now() }),
     });
     inp.value = "";
-    setStatus("Запрос выполнен. Проверьте строку «Сервер».", false);
+    setStatus("Готово: часы хоста выставлены по вашему устройству (UTC). Проверьте строки времени.", false);
     void refreshServerClock();
   } catch (e) {
     setStatus(String(e.message || e), true);

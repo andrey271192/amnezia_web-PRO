@@ -461,15 +461,69 @@ function requireDisconnectedAt(raw) {
   return d.toISOString();
 }
 
-/** Часовой пояс для строки «Сервер» в UI (IANA). Приоритет: DISPLAY_TZ → TZ процесса Node */
+/** Пояс для строки «Сервер»: переменная TZ контейнера или значение из Intl (часто UTC в Docker). Без подмены под пояс браузера. */
 function resolveServerClockTimeZone() {
-  const override = process.env.DISPLAY_TZ?.trim();
-  if (override) return override;
+  const tzEnv = process.env.TZ?.trim();
+  if (tzEnv) return tzEnv;
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   } catch {
     return "UTC";
   }
+}
+
+/** Смещение от UTC в минутах для IANA-пояса в данный момент (через GMT± из Intl). */
+function offsetMinutesFromUtc(timeZone, date) {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "longOffset",
+    });
+    const parts = dtf.formatToParts(date);
+    let raw = parts.find((p) => p.type === "timeZoneName")?.value || "";
+    raw = raw.replace(/\u2212/g, "-").trim();
+    let m = raw.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/i);
+    if (!m) {
+      m = raw.match(/^([+-])(\d{2}):(\d{2})$/);
+      if (m) {
+        const sign = m[1] === "-" ? -1 : 1;
+        const h = parseInt(m[2], 10);
+        const min = parseInt(m[3], 10);
+        return sign * (h * 60 + min);
+      }
+      return 0;
+    }
+    const sign = m[1] === "-" ? -1 : 1;
+    const h = parseInt(m[2], 10);
+    const min = m[3] ? parseInt(m[3], 10) : 0;
+    return sign * (h * 60 + min);
+  } catch {
+    return 0;
+  }
+}
+
+function buildZoneCompare(serverTz, browserTz, now) {
+  if (!browserTz) {
+    return { sameZone: null, hint: "", diffMinutes: null };
+  }
+  if (browserTz === serverTz) {
+    return {
+      sameZone: true,
+      hint: "Пояс браузера совпадает с поясом строки «Сервер» — часы совпадут.",
+      diffMinutes: 0,
+    };
+  }
+  const so = offsetMinutesFromUtc(serverTz, now);
+  const bo = offsetMinutesFromUtc(browserTz, now);
+  const diffMin = bo - so;
+  const abs = Math.abs(diffMin);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  const ahead = diffMin > 0;
+  const hint = ahead
+    ? `Ваше место (${browserTz}): на ${h} ч ${m} мин «впереди» строки «Сервер» (${serverTz}) при одном UTC.`
+    : `Ваше место (${browserTz}): на ${h} ч ${m} мин «позже» пояса сервера (${serverTz}).`;
+  return { sameZone: false, hint, diffMinutes: diffMin };
 }
 
 function sshpassBinaryPath() {
@@ -542,7 +596,7 @@ app.get("/api/session", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/server-time", requireAuth, (_req, res) => {
+app.get("/api/server-time", requireAuth, (req, res) => {
   const now = new Date();
   const timeZone = resolveServerClockTimeZone();
   let formatted;
@@ -558,10 +612,17 @@ app.get("/api/server-time", requireAuth, (_req, res) => {
       timeStyle: "medium",
     });
   }
+  const browserTz =
+    typeof req.query.browserTz === "string" ? req.query.browserTz.trim() : "";
+  const zoneCompare = buildZoneCompare(timeZone, browserTz, now);
   res.json({
     iso: now.toISOString(),
     formatted,
     timeZone,
+    browserTimeZone: browserTz || null,
+    zoneSame: zoneCompare.sameZone,
+    zoneCompareHint: zoneCompare.hint,
+    zoneDiffMinutes: zoneCompare.diffMinutes ?? null,
   });
 });
 

@@ -58,27 +58,28 @@
         <select id="proto-select" class="proto-select" aria-label="Инстанс AmneziaWG"></select>
       </div>
       <div class="clock-strip" role="status" aria-live="polite">
-        <div class="clock-row">
-          <span class="muted clock-kind">Сервер</span>
+        <div class="clock-row clock-row--server">
+          <span class="muted clock-kind">Сервер <span class="clock-kind-sub">(часы VPS / контейнера)</span></span>
           <time id="clock-server" class="clock-time">—</time>
         </div>
-        <div class="clock-row">
-          <span class="muted clock-kind">Браузер</span>
+        <div class="clock-row clock-row--your-place">
+          <span class="muted clock-kind">Ваше место <span class="clock-kind-sub">(браузер)</span></span>
           <time id="clock-local" class="clock-time">—</time>
         </div>
+        <p id="clock-zone-diff" class="clock-zone-diff muted hidden" role="note"></p>
         <p class="clock-hint muted">
-          «Сервер» — время в часовом поясе VPS (подпись справа). «Браузер» — ваш компьютер. «Сверить» — заново запросить момент с сервера.
+          Цифры разнятся, если пояса разные — это нормально для одного момента UTC. «Сверить» подтягивает время с VPS.
         </p>
         <button type="button" id="clock-sync" class="btn small ghost clock-sync-btn">
           Сверить время
         </button>
         <details class="clock-host-sync">
-          <summary>Синхронизировать часы VPS с этим компьютером</summary>
+          <summary class="clock-sync-summary">Синхронизация: выставить часы <strong>хоста VPS</strong> под <strong>ваше устройство</strong></summary>
           <p id="sync-host-hint" class="muted clock-sync-hint"></p>
           <label for="sync-root-pw">Пароль root на хосте (не сохраняется)</label>
           <input id="sync-root-pw" type="password" autocomplete="off" class="clock-sync-input">
           <button type="button" id="sync-host-time" class="btn small primary clock-sync-submit">
-            Выставить время хоста как у браузера
+            Взять время с этого устройства и записать на хост VPS
           </button>
         </details>
       </div>

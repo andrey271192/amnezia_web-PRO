@@ -227,6 +227,42 @@ h1 {
   max-width: 22rem;
 }
 
+.clock-row--server .clock-kind-sub,
+.clock-row--your-place .clock-kind-sub {
+  font-weight: 400;
+  opacity: 0.82;
+  font-size: 0.72rem;
+}
+
+.clock-row--your-place {
+  padding: 0.35rem 0.55rem;
+  margin: 0.15rem -0.35rem 0;
+  border-radius: 10px;
+  border-left: 3px solid #22d3ee;
+  background: rgba(56, 189, 248, 0.07);
+}
+
+.clock-zone-diff {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  max-width: 26rem;
+}
+
+.clock-zone-diff--accent {
+  color: #a5f3fc;
+  padding: 0.45rem 0.55rem;
+  margin-top: 0.45rem;
+  border-radius: 8px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.clock-sync-summary strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
 .clock-strip {
   display: flex;
   flex-direction: column;
@@ -247,7 +283,9 @@ h1 {
 }
 
 .clock-kind {
-  flex: 0 0 4.25rem;
+  flex: 0 0 auto;
+  min-width: 7rem;
+  max-width: 11rem;
 }
 
 .clock-time {
