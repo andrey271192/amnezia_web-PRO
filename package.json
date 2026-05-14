@@ -1,0 +1,18 @@
+{
+  "name": "amnezia-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web-панель управления клиентами AmneziaWG (Docker, пароль, AWG)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andrey271192/amnezia-admin.git"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

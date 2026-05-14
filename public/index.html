@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AmneziaWG — клиенты</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page">
+  <div id="login-gate" class="gate hidden" aria-hidden="true">
+    <div class="gate-card">
+      <p class="eyebrow">Панель сервера</p>
+      <h1>Вход</h1>
+      <p class="sub">Введите пароль администратора панели.</p>
+      <form id="login-form">
+        <label for="login-password">Пароль</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+        <button type="submit" class="btn primary full">Войти</button>
+        <p id="login-error" class="status err" role="alert"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="app-root" class="shell hidden">
+    <header class="top">
+      <div>
+        <p class="eyebrow">Панель сервера</p>
+        <h1>Пользователи AmneziaWG</h1>
+        <p class="sub">Дату отключения вы задаёте сами: при нажатии «Выключить» или кнопкой «Задать дату» в колонке «Последнее отключение». Время берётся как локальное на вашем компьютере.</p>
+      </div>
+      <div class="token-box">
+        <div class="session-actions">
+          <button type="button" id="logout" class="btn ghost full">Выйти</button>
+        </div>
+        <details class="pw-change">
+          <summary>Сменить пароль</summary>
+          <form id="pw-form">
+            <label for="pw-current">Текущий пароль</label>
+            <input id="pw-current" type="password" autocomplete="current-password" required>
+            <label for="pw-new">Новый пароль</label>
+            <input id="pw-new" type="password" autocomplete="new-password" required minlength="8">
+            <label for="pw-new2">Повтор нового пароля</label>
+            <input id="pw-new2" type="password" autocomplete="new-password" required minlength="8">
+            <button type="submit" class="btn primary full">Сохранить новый пароль</button>
+            <p id="pw-msg" class="status" role="status"></p>
+          </form>
+        </details>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="pill"><span class="dot ok"></span><span id="proto-label">Протокол: AmneziaWG</span></div>
+      <button type="button" id="refresh" class="btn primary">Обновить</button>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Пользователи</h2>
+        <span class="muted" id="peer-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th>IP</th>
+              <th>Статус</th>
+              <th>Последнее отключение</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="raw">
+      <summary>Вывод awg show (отладка)</summary>
+      <pre id="wg-show"></pre>
+    </details>
+  </div>
+
+  <footer class="support-footer">
+    <div class="support-line">
+      <strong class="support-title">Amnezia Admin WebUI</strong>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://github.com/andrey271192/amnezia-admin" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://boosty.to/lot_andrey" target="_blank" rel="noopener noreferrer">💖 Boosty</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://github.com/andrey271192/amnezia-admin/blob/main/README.md#support-links" target="_blank" rel="noopener noreferrer">💳 Ozon&nbsp;СБП</a>
+      <span class="support-sep" aria-hidden="true">·</span>
+      <a href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">✉️ Telegram&nbsp;@lot_andrey</a>
+    </div>
+    <p class="support-blurb">
+      Поддержать проект — поставь звезду на GitHub или донат. Связаться с автором — Telegram.
+    </p>
+  </footer>
+
+  <dialog id="disconnect-dt-dialog" class="dt-dialog">
+    <div class="dt-dialog-inner">
+      <h3 id="dt-dialog-title">Дата отключения</h3>
+      <p class="muted" id="dt-dialog-client"></p>
+      <label for="dt-dialog-input">Дата и время</label>
+      <input type="datetime-local" id="dt-dialog-input" step="60">
+      <div class="dt-dialog-actions">
+        <button type="button" class="btn ghost" id="dt-dialog-cancel">Отмена</button>
+        <button type="button" class="btn primary" id="dt-dialog-ok">Подтвердить</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

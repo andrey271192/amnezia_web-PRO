@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Установка Amnezia Admin WebUI одной командой (см. README).
+set -euo pipefail
+
+GITHUB_REPO="${GITHUB_REPO:-andrey271192/amnezia-admin}"
+BRANCH="${BRANCH:-main}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/amnezia-admin}"
+DATA_DIR="${DATA_DIR:-/opt/amnezia-admin-data}"
+CONTAINER_NAME="${CONTAINER_NAME:-amnezia-admin}"
+HOST_PORT="${HOST_PORT:-8080}"
+
+need_root() {
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    echo "Запустите от root: sudo bash или: curl ... | sudo bash"
+    exit 1
+  fi
+}
+
+need_docker() {
+  command -v docker >/dev/null 2>&1 || {
+    echo "Ошибка: нужен Docker."
+    exit 1
+  }
+  docker info >/dev/null 2>&1 || {
+    echo "Ошибка: демон Docker не отвечает."
+    exit 1
+  }
+}
+
+need_root
+need_docker
+
+REPO_SLUG="${GITHUB_REPO##*/}"
+TMP=""
+cleanup() {
+  [[ -n "${TMP}" ]] && rm -rf "${TMP}"
+}
+trap cleanup EXIT
+
+if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
+  echo "→ Клонирование релиза ${GITHUB_REPO} (${BRANCH})..."
+  TMP=$(mktemp -d)
+  curl -fsSL "https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz" \
+    | tar xz -C "${TMP}"
+  rm -rf "${INSTALL_DIR}"
+  mkdir -p "$(dirname "${INSTALL_DIR}")"
+  mv "${TMP}/${REPO_SLUG}-${BRANCH}" "${INSTALL_DIR}"
+  TMP=""
+fi
+
+mkdir -p "${DATA_DIR}"
+
+BOOT_PW=""
+PASS_FILE="/root/amnezia-admin.initial-password"
+if [[ -f "${DATA_DIR}/password.hash" ]]; then
+  echo "→ В ${DATA_DIR} уже есть password.hash — контейнер поднимется с прежним паролем."
+elif [[ -n "${ADMIN_PASSWORD:-}" ]]; then
+  BOOT_PW="${ADMIN_PASSWORD}"
+  echo "→ Использую ADMIN_PASSWORD из окружения."
+elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
+  echo "→ ALLOW_DEFAULT_PASSWORD=1 — см. README, пароль по умолчанию для входа."
+else
+  BOOT_PW="$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 22 || openssl rand -hex 16)"
+  umask 077
+  printf '%s\n' "${BOOT_PW}" >"${PASS_FILE}"
+  echo "→ Первый пароль записан в ${PASS_FILE}"
+fi
+
+echo "→ Сборка образа amnezia-admin:latest ..."
+docker build -t amnezia-admin:latest "${INSTALL_DIR}"
+
+docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
+
+RUN_ENV=(
+  -e AWG_CONTAINER="${AWG_CONTAINER:-amnezia-awg2}"
+)
+
+if [[ -n "${BOOT_PW}" ]]; then
+  RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
+elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
+  RUN_ENV+=( -e "ALLOW_DEFAULT_PASSWORD=1" )
+fi
+
+docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
+  -p "${HOST_PORT}:3980" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "${DATA_DIR}:/data" \
+  "${RUN_ENV[@]}" \
+  amnezia-admin:latest
+
+IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+echo ""
+echo "=== Готово ==="
+echo "Откройте в браузере: http://${IP:-SERVER_IP}:${HOST_PORT}"
+if [[ -f "${PASS_FILE}" ]]; then
+  echo "Первый пароль: $(cat "${PASS_FILE}")"
+fi
+if [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
+  echo "Пароль по умолчанию (смените в панели): AmneziaAdmin!ChangeMe"
+fi
+echo ""
+echo "Удаление: curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/${BRANCH}/scripts/uninstall.sh | sudo bash"
