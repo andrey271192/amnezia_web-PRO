@@ -62,6 +62,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `WARP_CONF_PATH` | `{WARP_DIR}/warp.conf` | Нестандартный путь к конфигу WARP |
 | `WARP_CLIENTS_LIST` | `{WARP_DIR}/clients.list` | Список строк `10.8.x.x/32` — кому маршрутизировать трафик через интерфейс `warp` |
 | `AMNEZIA_START_SCRIPT` | `/opt/amnezia/start.sh` | Куда встраивается блок автоподъёма WARP после перезапуска (маркеры совместимы с прежним `warp-manager`) |
+| `WARP_SSH_INSTALL_DIR` | `/opt/amnezia-admin` | Каталог на **хосте VPS**, откуда по SSH выполняется `scripts/warp-amnezia.sh` при установке/удалении WARP из панели (`POST /api/warp/host-setup`) |
 | `SCHEDULE_DISCONNECT_MS` | `60000` | Как часто планировщик проверяет отложенное отключение из туннеля (мс) |
 | `TZ` | _(часто UTC в Docker)_ | Пояс строки «Сервер» в панели (IANA, например `Europe/Berlin`). Без `TZ` берётся из образа (часто UTC) — тогда от браузера будет видна разница часов |
 | `TIME_SYNC_SSH_HOST` | `172.17.0.1` | Хост для SSH root при синхронизации времени из панели (часто шлюз Docker к хосту) |
@@ -108,10 +109,12 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scrip
 
 ### Cloudflare WARP (необязательно)
 
-**Устанавливать не обязательно.** Панель и обычный AmneziaWG работают без WARP. Раздел **Cloudflare WARP** в веб-интерфейсе нужен только если вы хотите, чтобы **выбранные** клиенты (с IPv4 `10.8.x.x/32` в AllowedIPs) выходили в интернет через туннель Cloudflare внутри контейнера AWG.
+**Устанавливать не обязательно.** Панель и обычный AmneziaWG работают без WARP. Статус **«Не установлен»** значит: в контейнере AWG ещё **нет** `warp.conf` (скрипт на VPS не запускали) — это не ошибка.
+
+Раздел **Cloudflare WARP** в веб-интерфейсе нужен только если вы хотите, чтобы **выбранные** клиенты (с IPv4 `10.8.x.x/32` в AllowedIPs) выходили в интернет через туннель Cloudflare внутри контейнера AWG.
 
 - **Не нужен WARP** — ничего на хосте не запускайте. В панели будет статус **«Не установлен»** — это нормально, блок можно не трогать.
-- **Нужен WARP** — один раз на хосте VPS (root), из каталога с репозиторием (часто `/opt/amnezia-admin`):
+- **Нужен WARP** — в панели кнопка **«Установить WARP на VPS»** (пароль root по SSH, как у синхронизации времени хоста; нужны `sshpass` в образе панели и не отключённый `TIME_SYNC_DISABLED`) **или** один раз на хосте VPS (root), из каталога репозитория (часто `/opt/amnezia-admin`):
 
 ```bash
 cd /opt/amnezia-admin
@@ -128,7 +131,7 @@ chmod +x scripts/warp-amnezia.sh
 
 Подкоманды: `install`, `start`, `stop`, `status`, `rekey`, **`uninstall`**. Учёт wgcf на хосте: `/root/wgcf-account.toml` (и бинарник `/root/wgcf`, если скачан).
 
-**Полностью убрать WARP** после установки (интерфейс `warp`, правила маршрутизации/NAT, блок `# --- WARP-MANAGER ---` в `start.sh`, `warp.conf` и список клиентов в каталоге WARP в контейнере; затем перезапуск контейнера AWG):
+**Полностью убрать WARP** — кнопка **«Удалить WARP с VPS»** в веб-панели (SSH с паролем root, как при установке) **или** на хосте вручную (интерфейс `warp`, правила маршрутизации/NAT, блок `# --- WARP-MANAGER ---` в `start.sh`, `warp.conf` и список клиентов в каталоге WARP в контейнере; затем перезапуск контейнера AWG):
 
 ```bash
 cd /opt/amnezia-admin

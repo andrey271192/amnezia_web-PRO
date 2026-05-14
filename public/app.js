@@ -47,6 +47,16 @@ const dtExtra = document.querySelector("#dt-dialog-extra");
 const dtHint = document.querySelector("#dt-dialog-hint");
 const dtScheduleTunnel = document.querySelector("#dt-dialog-schedule-tunnel");
 
+const warpSshDialog = document.querySelector("#warp-ssh-dialog");
+const warpSshTitle = document.querySelector("#warp-ssh-title");
+const warpSshLead = document.querySelector("#warp-ssh-lead");
+const warpSshPw = document.querySelector("#warp-ssh-pw");
+const warpSshCancel = document.querySelector("#warp-ssh-cancel");
+const warpSshOk = document.querySelector("#warp-ssh-ok");
+const warpSshErr = document.querySelector("#warp-ssh-err");
+/** @type {"install" | "uninstall" | null} */
+let warpSshPendingCmd = null;
+
 /** Какие панели скрыты настройкой сервера (`UI_HIDE_SECTIONS`). */
 let uiHidden = { users: false, warp: false, cascade: false };
 
@@ -164,6 +174,61 @@ dtOk.addEventListener("click", async () => {
     setStatus(String(e.message || e), true);
   }
 });
+
+function openWarpHostSetup(cmd) {
+  if (!warpSshDialog || !warpSshTitle || !warpSshLead || !warpSshPw || !warpSshOk || !warpSshErr) return;
+  warpSshPendingCmd = cmd;
+  warpSshErr.textContent = "";
+  warpSshPw.value = "";
+  if (cmd === "install") {
+    warpSshTitle.textContent = "Установить Cloudflare WARP";
+    warpSshLead.textContent =
+      "На хосте VPS выполнится scripts/warp-amnezia.sh install для контейнера текущего инстанса. SSH так же, как у блока синхронизации времени (TIME_SYNC_SSH_HOST, часто 172.17.0.1). Пароль root не сохраняется.";
+    warpSshOk.textContent = "Установить";
+  } else {
+    warpSshTitle.textContent = "Удалить Cloudflare WARP";
+    warpSshLead.textContent =
+      "На хосте выполнится scripts/warp-amnezia.sh uninstall (интерфейс warp, правила, автозапуск в start.sh; контейнер AWG перезапустится).";
+    warpSshOk.textContent = "Удалить";
+  }
+  warpSshDialog.showModal();
+}
+
+if (warpSshCancel && warpSshDialog) {
+  warpSshCancel.addEventListener("click", () => {
+    warpSshDialog.close();
+    warpSshPendingCmd = null;
+  });
+}
+
+if (warpSshOk && warpSshDialog && warpSshPw) {
+  warpSshOk.addEventListener("click", async () => {
+    const cmd = warpSshPendingCmd;
+    if (!cmd) return;
+    const pw = warpSshPw.value;
+    if (!String(pw).trim()) {
+      warpSshErr.textContent = "Введите пароль root.";
+      return;
+    }
+    warpSshErr.textContent = "";
+    try {
+      setStatus(cmd === "install" ? "Устанавливаю WARP на хосте VPS…" : "Удаляю WARP на хосте VPS…", false);
+      await api("/api/warp/host-setup", {
+        method: "POST",
+        body: JSON.stringify({ rootPassword: pw, cmd }),
+      });
+      warpSshDialog.close();
+      warpSshPendingCmd = null;
+      warpSshPw.value = "";
+      setStatus("Готово.", false);
+      await loadClients();
+    } catch (e) {
+      const msg = String(e.message || e);
+      warpSshErr.textContent = msg;
+      setStatus(msg, true);
+    }
+  });
+}
 
 function showLogin() {
   stopClocks();
@@ -661,15 +726,40 @@ function renderWarpPanel(data) {
 
   if (!w.installed) {
     warpStatusLine.textContent = "Не установлен";
+    const explain = document.createElement("p");
+    explain.className = "muted warp-muted";
+    explain.textContent =
+      "Так и должно быть, пока на VPS не создан файл warp.conf внутри контейнера AWG. После установки статус сменится; без WARP обычный AmneziaWG уже работает.";
+    warpActionsEl.appendChild(explain);
+
+    if (w.hostSshInstall) {
+      warpActionsEl.appendChild(
+        btn("Установить WARP на VPS", "btn small primary", () => openWarpHostSetup("install")),
+      );
+      const sshHint = document.createElement("p");
+      sshHint.className = "muted warp-muted";
+      sshHint.textContent =
+        "Кнопка запускает на хосте тот же скрипт, что в README; понадобится пароль root по SSH (не сохраняется). Альтернатива — команда вручную по SSH.";
+      warpActionsEl.appendChild(sshHint);
+    }
+
     const hint = document.createElement("p");
     hint.className = "muted warp-muted";
     hint.innerHTML =
-      "Один раз на хосте (root): <code class=\"inline\">bash scripts/warp-amnezia.sh install</code> — из каталога клона репозитория на VPS. Если контейнер не угадан автоматически: <code class=\"inline\">bash scripts/warp-amnezia.sh install amnezia-awg2</code>.";
+      "Вручную на хосте (root), из каталога репозитория: <code class=\"inline\">bash scripts/warp-amnezia.sh install</code> или с именем контейнера: <code class=\"inline\">bash scripts/warp-amnezia.sh install amnezia-awg2</code>.";
     warpActionsEl.appendChild(hint);
+
+    if (!w.hostSshInstall) {
+      const noBtn = document.createElement("p");
+      noBtn.className = "muted warp-muted";
+      noBtn.textContent =
+        "Кнопка установки с панели недоступна: нет sshpass в образе панели или включено TIME_SYNC_DISABLED=1 — используйте SSH вручную.";
+      warpActionsEl.appendChild(noBtn);
+    }
+
     const skip = document.createElement("p");
     skip.className = "muted warp-muted";
-    skip.textContent =
-      "Если Cloudflare WARP не нужен, ничего не выполняйте — AmneziaWG и панель работают без него. Полное удаление: bash scripts/warp-amnezia.sh uninstall (см. README).";
+    skip.textContent = "Если выход через Cloudflare не нужен, ничего не нажимайте — VPN уже работает без этого блока.";
     warpActionsEl.appendChild(skip);
     return;
   }
@@ -770,6 +860,9 @@ function renderWarpPanel(data) {
         setStatus(String(e.message || e), true);
       }
     }),
+  );
+  warpActionsEl.appendChild(
+    btn("Удалить WARP с VPS", "btn small warn", () => openWarpHostSetup("uninstall")),
   );
 }
 

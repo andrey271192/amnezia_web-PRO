@@ -82,6 +82,7 @@
 | POST | `/api/clients/disconnect-date` | Даты отключения / расписание |
 | GET/POST | `/api/clients/export-config` | Скачать `.conf`; GET — прямая ссылка (сессия); опционально `?token=…` если задан `EXPORT_CONFIG_SECRET` |
 | POST | `/api/clients/create-cascade` | `{ "endpointHost", "endpointPort?", "tunnelIp?", "clientName?", "profileId?" }` — новый peer и файл `.conf` |
+| POST | `/api/warp/host-setup` | Установка/удаление WARP на хосте по SSH: `{ "rootPassword", "cmd": "install" \| "uninstall" }` (как синхронизация времени; каталог скрипта — `WARP_SSH_INSTALL_DIR`) |
 | POST | `/api/warp/start` | Поднять WARP |
 | POST | `/api/warp/stop` | Остановить WARP |
 | POST | `/api/warp/routing` | Политика по клиентам |

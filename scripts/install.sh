@@ -113,7 +113,7 @@ PREV_CONTAINER_ENV=""
 if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
   PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
 fi
-for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE; do
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE WARP_SSH_INSTALL_DIR; do
   if [[ -z "${!__ui_var:-}" ]] && [[ -n "${PREV_CONTAINER_ENV}" ]]; then
     PREV_VAL=""
     while IFS= read -r __line; do
@@ -160,7 +160,7 @@ if [[ -n "${TZ:-}" ]]; then
   RUN_ENV+=( -e "TZ=${TZ}" )
 fi
 
-for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT; do
+for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT WARP_SSH_INSTALL_DIR; do
   if [[ -n "${!__warp_var:-}" ]]; then
     RUN_ENV+=( -e "${__warp_var}=${!__warp_var}" )
   fi
@@ -172,7 +172,7 @@ for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2
   fi
 done
 
-for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE; do
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE WARP_SSH_INSTALL_DIR; do
   if [[ -n "${!__ui_var:-}" ]]; then
     RUN_ENV+=( -e "${__ui_var}=${!__ui_var}" )
   fi

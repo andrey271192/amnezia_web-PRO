@@ -103,7 +103,7 @@
           <strong>Необязательно.</strong> Если достаточно обычного AmneziaWG без выхода части клиентов через Cloudflare — раздел можно не трогать (статус «Не установлен» — норма).
           Если WARP нужен: выход в интернет через Cloudflare для <em>выбранных</em> клиентов (правила маршрутизации и NAT в контейнере).
           Один раз на хосте VPS под root: в каталоге с репозиторием выполните <code class="inline">bash scripts/warp-amnezia.sh install</code>.
-          Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится). Убрать WARP полностью: <code class="inline">bash scripts/warp-amnezia.sh uninstall</code> — см. README.
+          Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится). Установить или удалить WARP с хоста можно кнопками ниже (пароль root по SSH — как при синхронизации времени). Убрать вручную: <code class="inline">bash scripts/warp-amnezia.sh uninstall</code> — см. README.
         </p>
         <div id="warp-actions" class="warp-actions"></div>
         <div id="warp-client-list" class="warp-client-list"></div>
@@ -217,6 +217,20 @@
         <button type="button" class="btn ghost" id="dt-dialog-cancel">Отмена</button>
         <button type="button" class="btn primary" id="dt-dialog-ok">Подтвердить</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="warp-ssh-dialog" class="dt-dialog">
+    <div class="dt-dialog-inner">
+      <h3 id="warp-ssh-title">WARP на хосте VPS</h3>
+      <p class="muted" id="warp-ssh-lead"></p>
+      <label for="warp-ssh-pw">Пароль root на хосте VPS (не сохраняется)</label>
+      <input id="warp-ssh-pw" type="password" autocomplete="off" class="clock-sync-input" />
+      <div class="dt-dialog-actions">
+        <button type="button" class="btn ghost" id="warp-ssh-cancel">Отмена</button>
+        <button type="button" class="btn primary" id="warp-ssh-ok">Выполнить</button>
+      </div>
+      <p id="warp-ssh-err" class="status err" role="alert"></p>
     </div>
   </dialog>
 

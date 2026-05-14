@@ -1400,6 +1400,50 @@ app.post("/api/sync-host-time", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/warp/host-setup", requireAuth, async (req, res) => {
+  if (UI_HIDDEN.warp) {
+    return res.status(403).json({ error: MSG_UI_WARP_OFF });
+  }
+  if (!hostTimeSyncConfigured()) {
+    return res.status(503).json({
+      error:
+        "С панели недоступно: в образе панели нет sshpass или задано TIME_SYNC_DISABLED=1. Запустите на хосте VPS вручную: bash /opt/amnezia-admin/scripts/warp-amnezia.sh install",
+    });
+  }
+  const pw = req.body?.rootPassword;
+  const cmd = req.body?.cmd;
+  if (typeof pw !== "string" || !pw.trim()) {
+    return res.status(400).json({ error: "Укажите пароль root VPS" });
+  }
+  if (cmd !== "install" && cmd !== "uninstall") {
+    return res.status(400).json({ error: "Ожидается cmd: install или uninstall" });
+  }
+  const rt = runtimeForRequest(req);
+  const container = String(rt.profile.container || "").trim();
+  if (!/^[a-zA-Z0-9_.-]+$/.test(container)) {
+    return res.status(400).json({ error: "Некорректное имя контейнера в профиле AWG" });
+  }
+  let installDir = "/opt/amnezia-admin";
+  try {
+    installDir = assertSafeUnixPath(process.env.WARP_SSH_INSTALL_DIR?.trim() || "/opt/amnezia-admin");
+  } catch {
+    return res.status(500).json({ error: "Некорректная переменная WARP_SSH_INSTALL_DIR на сервере панели" });
+  }
+  const host = process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1";
+  const remoteCmd = `bash -lc 'cd ${installDir} && chmod +x scripts/warp-amnezia.sh 2>/dev/null || true && AWG_CONTAINER=${container} ./scripts/warp-amnezia.sh ${cmd}'`;
+  try {
+    const out = await sshRootRun(pw.trim(), host, remoteCmd);
+    res.json({ ok: true, output: out.slice(0, 8000) });
+  } catch (e) {
+    console.warn("warp host-setup:", e);
+    res.status(400).json({
+      error:
+        String(e.message || e) ||
+        "Не удалось выполнить по SSH. Проверьте пароль root, что вход root по паролю разрешён, переменную TIME_SYNC_SSH_HOST и наличие каталога со скриптом на хосте.",
+    });
+  }
+});
+
 app.post("/api/login", (req, res) => {
   const pw = req.body?.password;
   if (typeof pw !== "string" || !pw) {
@@ -1520,6 +1564,9 @@ app.get("/api/clients", requireAuth, async (req, res) => {
             wgShowWarp: warpMeta.wgShowWarp || "",
             selectedAllowedIps: warpMeta.selectedAllowedIps,
             paths: warpMeta.paths,
+            hostSshInstall: hostTimeSyncConfigured(),
+            sshHost: process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1",
+            installDir: process.env.WARP_SSH_INSTALL_DIR?.trim() || "/opt/amnezia-admin",
           };
     res.json({
       profileId: rt.profile.id,
