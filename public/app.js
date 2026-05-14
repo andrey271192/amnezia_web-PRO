@@ -512,6 +512,13 @@ function renderRows(clients) {
       btn("Переименовать", "btn small ghost", () => void renameClient(c))
     );
     nameWrap.append(strong, renameWrap);
+    if (!c.exportAvailable) {
+      const exHint = document.createElement("p");
+      exHint.className = "muted export-missing-hint";
+      exHint.textContent =
+        "Экспорт .conf с сервера недоступен: нет userData.last_config (ключи только в приложении Amnezia).";
+      nameWrap.appendChild(exHint);
+    }
     nameTd.appendChild(nameWrap);
 
     const ipTd = document.createElement("td");
@@ -549,8 +556,21 @@ function renderRows(clients) {
       );
     }
     if (c.exportAvailable) {
+      const direct = document.createElement("a");
+      direct.className = "btn small ghost";
+      direct.href = clientExportGetUrl(c.clientId);
+      direct.textContent = "Прямая ссылка";
+      direct.rel = "noopener";
+      direct.title =
+        "Открыть в новой вкладке — скачается .conf, если вы авторизованы в этой панели (cookies).";
+
+      actTd.appendChild(btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)));
+      actTd.appendChild(direct);
       actTd.appendChild(
-        btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)),
+        btn("Копировать URL", "btn small ghost", async () => {
+          const ok = await copyTextToClipboard(clientExportGetUrl(c.clientId));
+          setStatus(ok ? "Ссылка скопирована (вставьте в браузер, будучи залогиненным)." : "Не удалось скопировать.", !ok);
+        }),
       );
     }
     actTd.appendChild(btn("Удалить", "btn small warn", () => confirmDelete(c.name, c.clientId)));
@@ -708,14 +728,46 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Query для нужного инстанса при нескольких профилях AWG_PROFILES */
+function currentProfileQuerySuffix() {
+  if (!protoSelect || !protoSwitch || protoSwitch.classList.contains("hidden")) return "";
+  const pid = String(protoSelect.value || "").trim();
+  return pid ? `&profileId=${encodeURIComponent(pid)}` : "";
+}
+
+/** Прямая GET-ссылка на скачивание (работает в браузере с активной сессией панели). */
+function clientExportGetUrl(clientId) {
+  const q = `clientId=${encodeURIComponent(clientId)}${currentProfileQuerySuffix()}`;
+  return `${window.location.origin}/api/clients/export-config?${q}`;
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function downloadClientConfig(c) {
   try {
     setStatus("Готовлю конфиг…", false);
-    const res = await fetch("/api/clients/export-config", {
-      method: "POST",
+    const res = await fetch(clientExportGetUrl(c.clientId), {
+      method: "GET",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: c.clientId }),
     });
     const text = await res.text();
     if (!res.ok) {

@@ -10,6 +10,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3980);
 const PROFILE_COOKIE = "amnezia_prof";
 const SCHEDULER_MS = Number(process.env.SCHEDULE_DISCONNECT_MS || 60_000);
+/** Если задан, разрешает GET /api/clients/export-config?token=…&clientId=… без сессии (храните секрет только для себя). */
+const EXPORT_CONFIG_SECRET = process.env.EXPORT_CONFIG_SECRET?.trim();
 
 function parseProfilesFromEnv() {
   const raw = process.env.AWG_PROFILES?.trim();
@@ -262,6 +264,38 @@ function requireAuth(req, res, next) {
     return;
   }
   next();
+}
+
+function verifyExportQueryToken(token) {
+  if (!EXPORT_CONFIG_SECRET || typeof token !== "string" || !token) return false;
+  const a = Buffer.from(token, "utf8");
+  const b = Buffer.from(EXPORT_CONFIG_SECRET, "utf8");
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function requireAuthOrExportToken(req, res, next) {
+  if (req.method === "GET" && verifyExportQueryToken(typeof req.query.token === "string" ? req.query.token : "")) {
+    next();
+    return;
+  }
+  requireAuth(req, res, next);
+}
+
+function runtimeFromExportRequest(req) {
+  const qPid = typeof req.query.profileId === "string" ? req.query.profileId.trim() : "";
+  const bodyPid =
+    req.method === "POST" && typeof req.body?.profileId === "string" ? req.body.profileId.trim() : "";
+  const pid = qPid || bodyPid;
+  if (pid) {
+    const p = PROFILES.find((x) => x.id === pid);
+    if (p) return createRuntime(p);
+  }
+  return runtimeForRequest(req);
 }
 
 function execDocker(args, stdin = null) {
@@ -1344,11 +1378,38 @@ app.get("/api/clients", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/clients/export-config", requireAuth, async (req, res) => {
-  const rt = runtimeForRequest(req);
-  const clientId = req.body?.clientId;
-  if (!clientId || typeof clientId !== "string") {
-    res.status(400).json({ error: "Укажите clientId" });
+async function serveClientConfigExport(req, res) {
+  const tokenOk =
+    req.method === "GET" &&
+    verifyExportQueryToken(typeof req.query.token === "string" ? req.query.token : "");
+
+  let rt;
+  if (tokenOk) {
+    if (PROFILES.length > 1) {
+      const pid = typeof req.query.profileId === "string" ? req.query.profileId.trim() : "";
+      const p = PROFILES.find((x) => x.id === pid);
+      if (!p) {
+        res.status(400).json({
+          error:
+            "При нескольких инстансах укажите в URL параметр profileId (как в списке «Инстанс» в панели).",
+        });
+        return;
+      }
+      rt = createRuntime(p);
+    } else {
+      rt = createRuntime(PROFILES[0]);
+    }
+  } else {
+    rt = runtimeFromExportRequest(req);
+  }
+
+  const rawId =
+    req.method === "POST"
+      ? req.body?.clientId
+      : req.query.clientId ?? req.query.id;
+  const clientId = typeof rawId === "string" ? decodeURIComponent(rawId.trim()) : "";
+  if (!clientId) {
+    res.status(400).json({ error: "Укажите clientId (в теле POST или query GET)" });
     return;
   }
   try {
@@ -1383,6 +1444,14 @@ app.post("/api/clients/export-config", requireAuth, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: String(e.message || e) });
   }
+}
+
+app.get("/api/clients/export-config", requireAuthOrExportToken, (req, res) => {
+  void serveClientConfigExport(req, res);
+});
+
+app.post("/api/clients/export-config", requireAuth, (req, res) => {
+  void serveClientConfigExport(req, res);
 });
 
 app.post("/api/warp/start", requireAuth, async (req, res) => {

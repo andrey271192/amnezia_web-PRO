@@ -521,6 +521,13 @@ tr:last-child td {
   flex-wrap: wrap;
 }
 
+.export-missing-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  max-width: 22rem;
+}
+
 .raw {
   margin-top: 1.25rem;
   color: var(--muted);

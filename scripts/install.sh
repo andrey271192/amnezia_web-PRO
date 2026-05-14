@@ -82,6 +82,33 @@ else
   echo "→ Первый пароль записан в ${PASS_FILE}"
 fi
 
+# AWG_PROFILES: не терять при апдейте без переменной (пропадает список «Инстанс»).
+AWG_PROFILE_SNAPSHOT="/root/amnezia-admin.awg-profiles.json"
+if [[ -n "${AWG_PROFILES:-}" ]]; then
+  umask 077
+  printf '%s\n' "${AWG_PROFILES}" >"${AWG_PROFILE_SNAPSHOT}" 2>/dev/null || true
+elif docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+  PREV_AWG_PROFILES=""
+  while IFS= read -r __env_line; do
+    if [[ "${__env_line}" == AWG_PROFILES=* ]]; then
+      PREV_AWG_PROFILES="${__env_line#AWG_PROFILES=}"
+      break
+    fi
+  done < <(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}')
+  if [[ -n "${PREV_AWG_PROFILES}" ]]; then
+    AWG_PROFILES="${PREV_AWG_PROFILES}"
+    echo "→ AWG_PROFILES восстановлен из предыдущего контейнера ${CONTAINER_NAME}."
+    umask 077
+    printf '%s\n' "${AWG_PROFILES}" >"${AWG_PROFILE_SNAPSHOT}" 2>/dev/null || true
+  fi
+fi
+if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
+  AWG_PROFILES="$(tr -d '\r\n' <"${AWG_PROFILE_SNAPSHOT}" || true)"
+  if [[ -n "${AWG_PROFILES}" ]]; then
+    echo "→ AWG_PROFILES восстановлен из ${AWG_PROFILE_SNAPSHOT}."
+  fi
+fi
+
 DOCKER_BUILD_EXTRA=()
 if [[ "${NO_CACHE:-}" == "1" ]]; then
   DOCKER_BUILD_EXTRA+=(--no-cache)
@@ -119,7 +146,7 @@ for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT
   fi
 done
 
-for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2; do
+for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2 EXPORT_CONFIG_SECRET; do
   if [[ -n "${!__export_var:-}" ]]; then
     RUN_ENV+=( -e "${__export_var}=${!__export_var}" )
   fi
