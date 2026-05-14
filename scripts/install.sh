@@ -113,6 +113,12 @@ if [[ -n "${TZ:-}" ]]; then
   RUN_ENV+=( -e "TZ=${TZ}" )
 fi
 
+for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT; do
+  if [[ -n "${!__warp_var:-}" ]]; then
+    RUN_ENV+=( -e "${__warp_var}=${!__warp_var}" )
+  fi
+done
+
 if [[ -n "${BOOT_PW}" ]]; then
   RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
 elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then

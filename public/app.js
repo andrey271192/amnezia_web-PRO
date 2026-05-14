@@ -15,6 +15,12 @@ const statusEl = document.querySelector("#status");
 const peerCountEl = document.querySelector("#peer-count");
 const wgShowEl = document.querySelector("#wg-show");
 
+const warpPanel = document.querySelector("#warp-panel");
+const warpStatusLine = document.querySelector("#warp-status-line");
+const warpActionsEl = document.querySelector("#warp-actions");
+const warpClientListEl = document.querySelector("#warp-client-list");
+const warpWgShowEl = document.querySelector("#warp-wg-show");
+
 const protoSwitch = document.querySelector("#proto-switch");
 const protoSelect = document.querySelector("#proto-select");
 const protoLabel = document.querySelector("#proto-label");
@@ -514,7 +520,11 @@ function renderRows(clients) {
     const stTd = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = `badge ${c.activeInConf ? "on" : "off"}`;
-    badge.textContent = c.activeInConf ? "В туннеле" : "Выключен";
+    if (c.activeInConf && c.warpEnabled) {
+      badge.textContent = "В туннеле · WARP";
+    } else {
+      badge.textContent = c.activeInConf ? "В туннеле" : "Выключен";
+    }
     stTd.appendChild(badge);
 
     const offTd = document.createElement("td");
@@ -552,6 +562,137 @@ function btn(label, cls, onClick) {
   b.textContent = label;
   b.addEventListener("click", onClick);
   return b;
+}
+
+/** Для политики WARP на сервере нужны IPv4 вида 10.8.x.x/32 */
+function parseIpv4Cidrs(allowedIps) {
+  if (!allowedIps) return [];
+  return String(allowedIps)
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => /^(\d{1,3}\.){3}\d{1,3}\/\d{1,3}$/.test(x));
+}
+
+/** @param {{ warp?: Record<string, unknown>; clients: Record<string, unknown>[] }} data */
+function renderWarpPanel(data) {
+  if (!warpPanel || !warpStatusLine || !warpActionsEl || !warpClientListEl || !warpWgShowEl) return;
+  const w = data.warp;
+  if (!w || w.supported === false) {
+    warpPanel.hidden = true;
+    return;
+  }
+  warpPanel.hidden = false;
+  warpActionsEl.innerHTML = "";
+  warpClientListEl.innerHTML = "";
+  warpWgShowEl.textContent = typeof w.wgShowWarp === "string" ? w.wgShowWarp : "";
+
+  if (!w.installed) {
+    warpStatusLine.textContent = "Не установлен";
+    const hint = document.createElement("p");
+    hint.className = "muted warp-muted";
+    hint.innerHTML =
+      "Один раз на хосте (root): <code class=\"inline\">bash scripts/warp-amnezia.sh install</code> — из каталога клона репозитория на VPS. Если контейнер не угадан автоматически: <code class=\"inline\">bash scripts/warp-amnezia.sh install amnezia-awg2</code>.";
+    warpActionsEl.appendChild(hint);
+    return;
+  }
+
+  const parts = [];
+  parts.push(w.running ? "Интерфейс warp поднят" : "Интерфейс warp опущен");
+  if (w.exitIp) parts.push(`выход ${w.exitIp}`);
+  warpStatusLine.textContent = parts.join(" · ");
+
+  const selection = new Set((w.selectedAllowedIps || []).map(String));
+
+  function redrawChecks() {
+    warpClientListEl.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    let any = false;
+    for (const c of data.clients) {
+      if (!c.activeInConf) continue;
+      const ips = parseIpv4Cidrs(c.allowedIps);
+      if (!ips.length) continue;
+      any = true;
+      const ip = ips[0];
+      const label = document.createElement("label");
+      label.className = "warp-check-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selection.has(ip);
+      cb.addEventListener("change", () => {
+        if (cb.checked) selection.add(ip);
+        else selection.delete(ip);
+      });
+      const span = document.createElement("span");
+      span.textContent = `${c.name} · ${ip}`;
+      label.append(cb, span);
+      frag.appendChild(label);
+    }
+    warpClientListEl.appendChild(frag);
+    if (!any) {
+      const p = document.createElement("p");
+      p.className = "muted warp-muted";
+      p.textContent =
+        "Нет активных клиентов с IPv4 AllowedIPs (/32) — WARP-политика в вебе работает только для таких адресов.";
+      warpClientListEl.appendChild(p);
+    }
+  }
+
+  redrawChecks();
+
+  warpActionsEl.appendChild(
+    btn("Поднять WARP", "btn small primary", async () => {
+      try {
+        setStatus("Поднимаю WARP…", false);
+        await api("/api/warp/start", { method: "POST", body: JSON.stringify({}) });
+        setStatus("Готово.", false);
+        await loadClients();
+      } catch (e) {
+        setStatus(String(e.message || e), true);
+      }
+    }),
+  );
+  warpActionsEl.appendChild(
+    btn("Остановить WARP", "btn small ghost", async () => {
+      try {
+        setStatus("Останавливаю WARP…", false);
+        await api("/api/warp/stop", { method: "POST", body: JSON.stringify({}) });
+        setStatus("Готово.", false);
+        await loadClients();
+      } catch (e) {
+        setStatus(String(e.message || e), true);
+      }
+    }),
+  );
+  warpActionsEl.appendChild(
+    btn("Все в WARP", "btn small ghost", () => {
+      for (const c of data.clients) {
+        if (!c.activeInConf) continue;
+        parseIpv4Cidrs(c.allowedIps).forEach((ip) => selection.add(ip));
+      }
+      redrawChecks();
+    }),
+  );
+  warpActionsEl.appendChild(
+    btn("Никого", "btn small ghost", () => {
+      selection.clear();
+      redrawChecks();
+    }),
+  );
+  warpActionsEl.appendChild(
+    btn("Применить маршрутизацию", "btn small primary", async () => {
+      try {
+        setStatus("Сохраняю WARP и перезапускаю контейнер AWG…", false);
+        await api("/api/warp/routing", {
+          method: "POST",
+          body: JSON.stringify({ selectedAllowedIps: [...selection] }),
+        });
+        setStatus("Готово.", false);
+        await loadClients();
+      } catch (e) {
+        setStatus(String(e.message || e), true);
+      }
+    }),
+  );
 }
 
 function escapeHtml(s) {
@@ -609,6 +750,7 @@ async function loadClients() {
     const pref = data.profileLabel ? `${data.profileLabel} · ` : "";
     peerCountEl.textContent = `${pref}${data.clients.length} в таблице · ${data.peerCount} peer`;
     wgShowEl.textContent = data.wgShow || "";
+    renderWarpPanel(data);
     renderRows(data.clients);
     setStatus("", false);
     void refreshServerClock();
@@ -624,6 +766,7 @@ async function loadClients() {
     rowsEl.innerHTML = "";
     wgShowEl.textContent = "";
     peerCountEl.textContent = "";
+    if (warpPanel) warpPanel.hidden = true;
   }
 }
 

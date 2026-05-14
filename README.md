@@ -1,6 +1,6 @@
 # Amnezia Admin WebUI
 
-Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения. Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
+Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения, а также **политика выхода через Cloudflare WARP** по клиентам (без Telegram и без QR — только скрипт установки на хосте и блок в вебе). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
 
 **Безопасность:** контейнер с монтированием `docker.sock` эквивалентен root на хосте — используйте сложный пароль и по возможности ограничьте доступ по IP или TLS.
 
@@ -48,7 +48,11 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
 | `HOST_PORT` | `8080` | Порт HTTP панели на хосте |
 | `AWG_CONTAINER` | `amnezia-awg2` | Имя контейнера Amnezia WG |
-| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе |
+| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе. В каждом объекте можно задать `warpDir`, `warpConf`, `warpClientsList`, `startScript` — см. раздел **Cloudflare WARP** |
+| `WARP_DIR` | `/opt/warp` | В контейнере AWG: каталог для `warp.conf` и `clients.list` |
+| `WARP_CONF_PATH` | `{WARP_DIR}/warp.conf` | Нестандартный путь к конфигу WARP |
+| `WARP_CLIENTS_LIST` | `{WARP_DIR}/clients.list` | Список строк `10.8.x.x/32` — кому маршрутизировать трафик через интерфейс `warp` |
+| `AMNEZIA_START_SCRIPT` | `/opt/amnezia/start.sh` | Куда встраивается блок автоподъёма WARP после перезапуска (маркеры совместимы с прежним `warp-manager`) |
 | `SCHEDULE_DISCONNECT_MS` | `60000` | Как часто планировщик проверяет отложенное отключение из туннеля (мс) |
 | `TZ` | _(часто UTC в Docker)_ | Пояс строки «Сервер» в панели (IANA, например `Europe/Berlin`). Без `TZ` берётся из образа (часто UTC) — тогда от браузера будет видна разница часов |
 | `TIME_SYNC_SSH_HOST` | `172.17.0.1` | Хост для SSH root при синхронизации времени из панели (часто шлюз Docker к хосту) |
@@ -71,6 +75,25 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scrip
 ```
 
 Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — `awg`; подставьте свои `container`, `confPath`, `clientsPath`, `iface`, `pskPath` при необходимости.
+
+### Cloudflare WARP (только AmneziaWG в Docker)
+
+Установка **без Telegram и без QR**: скрипт на хосте регистрирует туннель через [wgcf](https://github.com/ViRb3/wgcf), собирает `warp.conf` внутри контейнера (`/opt/warp` по умолчанию). Дальше в веб-панели выбираете, какие клиенты выходят в интернет через интерфейс `warp`.
+
+На **хосте VPS** (root), из каталога с репозиторием:
+
+```bash
+cd /opt/amnezia-admin
+chmod +x scripts/warp-amnezia.sh
+# при необходимости: AWG_CONTAINER=имя_контейнера
+./scripts/warp-amnezia.sh install
+```
+
+Подкоманды: `install`, `start`, `stop`, `status`, `rekey`. Учёт wgcf хранится в `/root/wgcf-account.toml` на хосте.
+
+В панели: раздел **Cloudflare WARP** — отметить клиентов (только IPv4 вида `10.8.x.x/32`), **Применить маршрутизацию** (контейнер AWG перезапускается). Маркеры в `start.sh` (`# --- WARP-MANAGER BEGIN ---`) совместимы с прежним `warp-manager`, если вы уже использовали его.
+
+Необязательно передайте в контейнер **amnezia-admin** переменные `WARP_DIR`, `WARP_CONF_PATH`, `WARP_CLIENTS_LIST`, `AMNEZIA_START_SCRIPT` через установщик — см. таблицу выше.
 
 После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 

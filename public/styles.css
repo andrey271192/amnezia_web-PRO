@@ -663,3 +663,59 @@ tr:last-child td {
   color: var(--muted);
   max-width: 62rem;
 }
+
+/* --- Cloudflare WARP --- */
+.warp-panel .warp-intro {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0 0 1rem;
+}
+
+.warp-panel .warp-intro code.inline {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  padding: 0.12rem 0.38rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+}
+
+.warp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.warp-client-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.warp-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.warp-check-row input {
+  flex-shrink: 0;
+}
+
+.warp-muted {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.warp-raw pre {
+  max-height: 220px;
+  overflow: auto;
+}

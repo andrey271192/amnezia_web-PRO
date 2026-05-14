@@ -13,33 +13,53 @@ const SCHEDULER_MS = Number(process.env.SCHEDULE_DISCONNECT_MS || 60_000);
 
 function parseProfilesFromEnv() {
   const raw = process.env.AWG_PROFILES?.trim();
-  const fallback = () => [
-    {
-      id: "awg",
-      label: process.env.AWG_PROFILE_LABEL || "AmneziaWG",
-      container: process.env.AWG_CONTAINER || "amnezia-awg2",
-      confPath: process.env.AWG_CONF_PATH || "/opt/amnezia/awg/awg0.conf",
-      clientsPath: process.env.AWG_CLIENTS_PATH || "/opt/amnezia/awg/clientsTable",
-      iface: process.env.AWG_IFACE || "awg0",
-      wgBinary: process.env.AWG_BINARY || "awg",
-      pskPath: process.env.AWG_PSK_PATH || "/opt/amnezia/awg/wireguard_psk.key",
-    },
-  ];
+  const fallback = () => {
+    const warpDir = (process.env.WARP_DIR || "/opt/warp").replace(/\/+$/, "") || "/opt/warp";
+    return [
+      {
+        id: "awg",
+        label: process.env.AWG_PROFILE_LABEL || "AmneziaWG",
+        container: process.env.AWG_CONTAINER || "amnezia-awg2",
+        confPath: process.env.AWG_CONF_PATH || "/opt/amnezia/awg/awg0.conf",
+        clientsPath: process.env.AWG_CLIENTS_PATH || "/opt/amnezia/awg/clientsTable",
+        iface: process.env.AWG_IFACE || "awg0",
+        wgBinary: process.env.AWG_BINARY || "awg",
+        pskPath: process.env.AWG_PSK_PATH || "/opt/amnezia/awg/wireguard_psk.key",
+        warpDir,
+        warpConf: process.env.WARP_CONF_PATH || `${warpDir}/warp.conf`,
+        warpClientsList: process.env.WARP_CLIENTS_LIST || `${warpDir}/clients.list`,
+        startScript: process.env.AMNEZIA_START_SCRIPT || "/opt/amnezia/start.sh",
+      },
+    ];
+  };
   if (!raw) return fallback();
   try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr) || arr.length === 0) return fallback();
     return arr
-      .map((row, i) => ({
-        id: String(row.id ?? `p${i}`),
-        label: String(row.label ?? row.id ?? `Профиль ${i + 1}`),
-        container: String(row.container ?? ""),
-        confPath: String(row.confPath ?? row.conf ?? "/opt/amnezia/awg/awg0.conf"),
-        clientsPath: String(row.clientsPath ?? row.clients ?? "/opt/amnezia/awg/clientsTable"),
-        iface: String(row.iface ?? row.IFACE ?? "awg0"),
-        wgBinary: String(row.wgBinary ?? row.binary ?? "awg"),
-        pskPath: String(row.pskPath ?? row.psk ?? "/opt/amnezia/awg/wireguard_psk.key"),
-      }))
+      .map((row, i) => {
+        const warpDirRaw = row.warpDir ?? "/opt/warp";
+        const warpDir = String(warpDirRaw).replace(/\/+$/, "") || "/opt/warp";
+        const warpConf = row.warpConf ? String(row.warpConf) : `${warpDir}/warp.conf`;
+        const warpClientsList = row.warpClientsList
+          ? String(row.warpClientsList)
+          : `${warpDir}/clients.list`;
+        const startScript = String(row.startScript ?? "/opt/amnezia/start.sh");
+        return {
+          id: String(row.id ?? `p${i}`),
+          label: String(row.label ?? row.id ?? `Профиль ${i + 1}`),
+          container: String(row.container ?? ""),
+          confPath: String(row.confPath ?? row.conf ?? "/opt/amnezia/awg/awg0.conf"),
+          clientsPath: String(row.clientsPath ?? row.clients ?? "/opt/amnezia/awg/clientsTable"),
+          iface: String(row.iface ?? row.IFACE ?? "awg0"),
+          wgBinary: String(row.wgBinary ?? row.binary ?? "awg"),
+          pskPath: String(row.pskPath ?? row.psk ?? "/opt/amnezia/awg/wireguard_psk.key"),
+          warpDir,
+          warpConf,
+          warpClientsList,
+          startScript,
+        };
+      })
       .filter((p) => p.container);
   } catch {
     console.warn("AWG_PROFILES: невалидный JSON, используется профиль по умолчанию.");
@@ -263,6 +283,296 @@ function execDocker(args, stdin = null) {
       child.stdin.end();
     }
   });
+}
+
+/** Запуск `sh -s` внутри контейнера со скриптом по stdin (многострочный shell без экранирования). */
+function dockerExecStdin(container, script) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", ["exec", "-i", container, "sh", "-s"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve({ stdout: out, stderr: err });
+      else reject(new Error(err.trim() || out.trim() || `exit ${code}`));
+    });
+    child.stdin.write(script);
+    child.stdin.end();
+  });
+}
+
+function assertSafeUnixPath(p) {
+  const s = String(p).trim();
+  if (!/^\/[a-zA-Z0-9_/.-]+$/.test(s)) {
+    throw new Error(`Недопустимый путь: ${p}`);
+  }
+  return s;
+}
+
+/** Разрешённые адреса клиента AmneziaWG для правил WARP (обычно одно значение с /32). */
+function assertAllowedIpCidr(token) {
+  const s = String(token).trim();
+  if (!/^(\d{1,3}\.){3}\d{1,3}\/\d{1,3}$/.test(s)) {
+    throw new Error(`Недопустимый AllowedIPs для WARP: ${token}`);
+  }
+  return s;
+}
+
+function peerAllowedIpTokens(peer) {
+  const raw = peer?.allowedIPs || "";
+  return raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function dockerRestartContainer(container) {
+  await execDocker(["restart", container]);
+  for (let i = 0; i < 24; i++) {
+    try {
+      await execDocker(["exec", container, "sh", "-c", "true"]);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  throw new Error("Контейнер не ответил после restart");
+}
+
+async function warpFileExists(rt, remotePath) {
+  try {
+    await execDocker(["exec", rt.profile.container, "test", "-f", remotePath]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function warpInterfaceUp(rt) {
+  try {
+    await execDocker(["exec", rt.profile.container, "ip", "addr", "show", "warp"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function warpLoadSelectedIps(rt) {
+  try {
+    const raw = await rt.dockerReadFile(rt.profile.warpClientsList);
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    return lines.map((l) => assertAllowedIpCidr(l));
+  } catch {
+    return [];
+  }
+}
+
+async function warpSaveSelectedIps(rt, ips) {
+  const uniq = [...new Set(ips.map((x) => assertAllowedIpCidr(x)))];
+  const content = uniq.length ? `${uniq.join("\n")}\n` : "";
+  await rt.dockerExec(`mkdir -p '${rt.profile.warpDir}'`);
+  await rt.dockerWriteFile(rt.profile.warpClientsList, content);
+}
+
+async function warpCleanupRules(rt) {
+  const sh = `#!/bin/sh
+set +e
+ip rule | awk '/lookup 100/ {print \$1}' | sed 's/://g' | sort -rn | while read -r pr; do
+  ip rule del priority "\$pr" 2>/dev/null || true
+done
+iptables -t nat -S POSTROUTING 2>/dev/null | grep -- '-o warp -j MASQUERADE' | while read -r line; do
+  rule=$(echo "\$line" | sed 's/^-A /-D /')
+  iptables -t nat \$rule 2>/dev/null || true
+done
+ip route flush table 100 2>/dev/null || true
+exit 0
+`;
+  try {
+    await dockerExecStdin(rt.profile.container, sh);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function warpApplyRouting(rt, ips) {
+  await warpCleanupRules(rt);
+  const list = ips.map((x) => assertAllowedIpCidr(x));
+  if (!list.length) return;
+  await rt.dockerExec(
+    "ip route add default dev warp table 100 2>/dev/null || ip route replace default dev warp table 100 2>/dev/null || true",
+  );
+  let prio = 100;
+  for (const ip of list) {
+    await rt.dockerExec(
+      `ip rule add from ${ip} table 100 priority ${prio} 2>/dev/null || true && ` +
+        `(iptables -t nat -C POSTROUTING -s ${ip} -o warp -j MASQUERADE 2>/dev/null || ` +
+        `iptables -t nat -I POSTROUTING 1 -s ${ip} -o warp -j MASQUERADE)`,
+    );
+    prio += 1;
+  }
+}
+
+function buildWarpBootBlock(warpConf, ips) {
+  assertSafeUnixPath(warpConf);
+  const list = ips.map((x) => assertAllowedIpCidr(x));
+  let routing = "";
+  if (list.length > 0) {
+    routing +=
+      "ip route add default dev warp table 100 2>/dev/null || ip route replace default dev warp table 100 2>/dev/null || true\n\n";
+    let prio = 100;
+    for (const ip of list) {
+      routing += `ip rule add from ${ip} table 100 priority ${prio} 2>/dev/null || true\n`;
+      routing += `iptables -t nat -C POSTROUTING -s ${ip} -o warp -j MASQUERADE 2>/dev/null || iptables -t nat -I POSTROUTING 1 -s ${ip} -o warp -j MASQUERADE\n`;
+      prio += 1;
+    }
+    routing += "\n";
+  }
+  return (
+    "# --- WARP-MANAGER BEGIN ---\n\n" +
+    `if [ -f '${warpConf}' ]; then\n` +
+    `  wg-quick up '${warpConf}' || true\n` +
+    `  sleep 3\n` +
+    `fi\n\n` +
+    routing +
+    "# --- WARP-MANAGER END ---\n"
+  );
+}
+
+async function warpPatchStartSh(rt, ips) {
+  const startScript = rt.profile.startScript;
+  assertSafeUnixPath(startScript);
+  const block = buildWarpBootBlock(rt.profile.warpConf, ips);
+  const delim = `WARPBLK_${crypto.randomBytes(8).toString("hex")}`;
+  if (block.includes(delim)) {
+    throw new Error("internal delimiter collision");
+  }
+  const sq = startScript.replace(/'/g, "'\\''");
+  const remote = [
+    "#!/bin/sh",
+    "set -e",
+    `START_SH='${sq}'`,
+    `BLOCK=$(cat <<'${delim}'`,
+    block.trimEnd(),
+    delim,
+    ")",
+    'if grep -qF \'# --- WARP-MANAGER BEGIN ---\' "$START_SH" 2>/dev/null; then',
+    '  sed -i \'/# --- WARP-MANAGER BEGIN ---/,/# --- WARP-MANAGER END ---/d\' "$START_SH"',
+    "fi",
+    'if grep -qF \'tail -f /dev/null\' "$START_SH"; then',
+    "  tmpfile=$(mktemp)",
+    "  while IFS= read -r line; do",
+    '    if echo "$line" | grep -qF \'tail -f /dev/null\'; then',
+    '      printf \'%s\\n\' "$BLOCK"',
+    "    fi",
+    '    printf \'%s\\n\' "$line"',
+    '  done < "$START_SH" > "$tmpfile"',
+    '  mv "$tmpfile" "$START_SH"',
+    '  chmod +x "$START_SH"',
+    "else",
+    '  printf \'\\n%s\\n\' "$BLOCK" >> "$START_SH"',
+    '  chmod +x "$START_SH"',
+    "fi",
+    "",
+  ].join("\n");
+  await dockerExecStdin(rt.profile.container, remote);
+}
+
+async function warpPersistAndRestart(rt, selectedIps) {
+  await rt.backupRemoteFiles();
+  await warpSaveSelectedIps(rt, selectedIps);
+  await warpApplyRouting(rt, selectedIps);
+  await warpPatchStartSh(rt, selectedIps);
+  await dockerRestartContainer(rt.profile.container);
+}
+
+function activePeerAllowedIpSet(conf) {
+  const set = new Set();
+  for (const p of conf.peers) {
+    for (const t of peerAllowedIpTokens(p)) {
+      try {
+        set.add(assertAllowedIpCidr(t));
+      } catch {
+        /* только ipv4 /cidr */
+      }
+    }
+  }
+  return set;
+}
+
+async function warpSummaryForRt(rt) {
+  try {
+    assertSafeUnixPath(rt.profile.warpConf);
+    assertSafeUnixPath(rt.profile.warpClientsList);
+    assertSafeUnixPath(rt.profile.warpDir);
+    assertSafeUnixPath(rt.profile.startScript);
+  } catch {
+    return { supported: false };
+  }
+  let installed = false;
+  try {
+    installed = await warpFileExists(rt, rt.profile.warpConf);
+  } catch {
+    installed = false;
+  }
+  const running = installed ? await warpInterfaceUp(rt) : false;
+  let exitIp = null;
+  if (running) {
+    try {
+      const out = await rt.dockerExec(
+        "curl -fsS --interface warp --connect-timeout 4 https://ifconfig.me 2>/dev/null || true",
+      );
+      const t = out.trim();
+      exitIp = t || null;
+    } catch {
+      exitIp = null;
+    }
+  }
+  let selectedAllowedIps = [];
+  if (installed) {
+    try {
+      selectedAllowedIps = await warpLoadSelectedIps(rt);
+    } catch {
+      selectedAllowedIps = [];
+    }
+  }
+  let wgShowWarp = "";
+  if (installed && running) {
+    try {
+      wgShowWarp = await rt.dockerExec("wg show warp 2>/dev/null || true");
+    } catch {
+      wgShowWarp = "";
+    }
+  }
+  return {
+    supported: true,
+    installed,
+    running,
+    exitIp,
+    wgShowWarp,
+    selectedAllowedIps,
+    paths: {
+      warpConf: rt.profile.warpConf,
+      clientsList: rt.profile.warpClientsList,
+      warpDir: rt.profile.warpDir,
+      startScript: rt.profile.startScript,
+    },
+  };
+}
+
+function peerUsesWarp(peer, selectedSet) {
+  if (!peer || !selectedSet.size) return false;
+  for (const t of peerAllowedIpTokens(peer)) {
+    try {
+      if (selectedSet.has(assertAllowedIpCidr(t))) return true;
+    } catch {
+      /* ipv6 и др. */
+    }
+  }
+  return false;
 }
 
 function createRuntime(profile) {
@@ -740,6 +1050,10 @@ app.get("/api/clients", requireAuth, async (req, res) => {
     } catch {
       wgShow = "";
     }
+    const warpMeta = await warpSummaryForRt(rt);
+    const warpSelected = new Set(
+      warpMeta.supported && warpMeta.installed ? warpMeta.selectedAllowedIps : [],
+    );
     const { conf, clients, peerByKey } = await rt.loadState();
     const rows = clients.map((c) => {
       const id = c.clientId;
@@ -759,8 +1073,24 @@ app.get("/api/clients", requireAuth, async (req, res) => {
         latestHandshake: ud.latestHandshake || null,
         dataReceived: ud.dataReceived || null,
         dataSent: ud.dataSent || null,
+        warpEnabled:
+          Boolean(warpMeta.supported && warpMeta.installed) &&
+          activeInConf &&
+          peerUsesWarp(peer, warpSelected),
       };
     });
+    const warpOut =
+      warpMeta.supported === false
+        ? { supported: false }
+        : {
+            supported: true,
+            installed: warpMeta.installed,
+            running: warpMeta.running,
+            exitIp: warpMeta.exitIp,
+            wgShowWarp: warpMeta.wgShowWarp || "",
+            selectedAllowedIps: warpMeta.selectedAllowedIps,
+            paths: warpMeta.paths,
+          };
     res.json({
       profileId: rt.profile.id,
       profileLabel: rt.profile.label,
@@ -769,7 +1099,76 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       peerCount: conf.peers.length,
       clients: rows,
       wgShow,
+      warp: warpOut,
     });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/warp/start", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
+  if (!(await warpFileExists(rt, rt.profile.warpConf))) {
+    return res.status(400).json({
+      error:
+        "WARP не установлен (нет warp.conf). Один раз выполните на хосте: scripts/warp-amnezia.sh install — см. README.",
+    });
+  }
+  try {
+    await rt.dockerExec(`wg-quick down '${rt.profile.warpConf}' 2>/dev/null || true`);
+    await rt.dockerExec(`wg-quick up '${rt.profile.warpConf}'`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/warp/stop", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
+  if (!(await warpFileExists(rt, rt.profile.warpConf))) {
+    return res.status(400).json({ error: "WARP не установлен." });
+  }
+  try {
+    await rt.dockerExec(`wg-quick down '${rt.profile.warpConf}' 2>/dev/null || true`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/warp/routing", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
+  if (!(await warpFileExists(rt, rt.profile.warpConf))) {
+    return res.status(400).json({
+      error:
+        "WARP не установлен. Сначала scripts/warp-amnezia.sh install на хосте VPS (root).",
+    });
+  }
+  const raw = req.body?.selectedAllowedIps;
+  if (!Array.isArray(raw)) {
+    return res.status(400).json({ error: "Ожидается selectedAllowedIps: массив адресов вида 10.8.1.2/32" });
+  }
+  let selected;
+  try {
+    selected = raw.map((x) => assertAllowedIpCidr(String(x).trim()));
+  } catch (e) {
+    return res.status(400).json({ error: String(e.message || e) });
+  }
+  try {
+    const { conf } = await rt.loadState();
+    const allowed = activePeerAllowedIpSet(conf);
+    for (const ip of selected) {
+      if (!allowed.has(ip)) {
+        return res.status(400).json({
+          error: `Адрес ${ip} не совпадает ни с одним активным peer (AllowedIPs) в текущем инстансе.`,
+        });
+      }
+    }
+    await warpPersistAndRestart(rt, selected);
+    res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e.message || e) });
