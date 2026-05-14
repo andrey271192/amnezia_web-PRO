@@ -28,7 +28,7 @@ body.page {
 
 .shell {
   flex: 1 0 auto;
-  max-width: 960px;
+  max-width: min(1120px, 100%);
   margin: 0 auto;
   padding: clamp(1.5rem, 4vw, 2.5rem) clamp(1rem, 3vw, 1.5rem) 3rem;
 }
@@ -437,13 +437,151 @@ h1 {
   font-size: 1rem;
 }
 
+/* Сворачиваемые блоки (стрелка в summary, как disclosure) */
+.panel-fold {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.panel-fold > summary.fold-summary {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.95rem 1.1rem;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+}
+
+.panel-fold[open] > summary.fold-summary {
+  border-bottom-color: var(--line);
+}
+
+.panel-fold > summary.fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold-arrow {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  margin-top: 0.32rem;
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent var(--accent);
+  transition: transform 0.15s ease;
+}
+
+.panel-fold[open] > summary.fold-summary .fold-arrow {
+  transform: rotate(90deg);
+  margin-top: 0.42rem;
+}
+
+.fold-titles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.fold-h {
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.fold-meta {
+  font-size: 0.82rem;
+}
+
+.panel-fold-body {
+  padding: 0 1.1rem 1.1rem;
+}
+
+.panel-fold-body > .warp-intro:first-child,
+.panel-fold-body > .cascade-intro:first-child {
+  margin-top: 0.85rem;
+}
+
+.panel-fold-raw {
+  margin-top: 1rem;
+}
+
+.panel-fold-raw > summary.fold-summary--raw {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.panel-fold-raw[open] > summary.fold-summary--raw .fold-arrow {
+  transform: rotate(90deg);
+  margin-top: 0.42rem;
+}
+
+.panel-fold-raw > summary.fold-summary--raw::-webkit-details-marker {
+  display: none;
+}
+
+.panel-fold-raw > pre {
+  margin-top: 0.5rem;
+}
+
+.th-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
 .muted {
   color: var(--muted);
   font-size: 0.88rem;
 }
 
-.table-wrap {
-  overflow-x: auto;
+table.clients-table {
+  table-layout: fixed;
+}
+
+.clients-table th:nth-child(1),
+.clients-table td:nth-child(1) {
+  width: 26%;
+  vertical-align: top;
+}
+
+.clients-table th:nth-child(2),
+.clients-table td:nth-child(2) {
+  width: 17%;
+}
+
+.clients-table th:nth-child(3),
+.clients-table td:nth-child(3) {
+  width: 14%;
+}
+
+.clients-table th:nth-child(4),
+.clients-table td:nth-child(4) {
+  width: 22%;
+}
+
+.clients-table .name-cell {
+  min-width: 0;
+}
+
+.clients-table td.actions {
+  vertical-align: top;
 }
 
 table {
@@ -525,7 +663,30 @@ tr:last-child td {
   margin: 0.35rem 0 0;
   font-size: 0.72rem;
   line-height: 1.35;
-  max-width: 22rem;
+  max-width: none;
+}
+
+.hint-mini {
+  margin-top: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.hint-mini summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--muted);
+  list-style: none;
+}
+
+.hint-mini summary::-webkit-details-marker {
+  display: none;
+}
+
+.hint-mini .export-missing-hint {
+  margin: 0.4rem 0 0;
 }
 
 .profile-hint {

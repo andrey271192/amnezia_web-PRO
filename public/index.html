@@ -90,71 +90,95 @@
 
     <p id="status" class="status" role="status"></p>
 
-    <section class="panel warp-panel" id="warp-panel" hidden>
-      <div class="panel-head">
-        <h2>Cloudflare WARP</h2>
-        <span class="muted" id="warp-status-line"></span>
+    <details class="panel-fold warp-panel" id="warp-panel" hidden>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Cloudflare WARP</span>
+          <span class="muted fold-meta" id="warp-status-line"></span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <p class="muted warp-intro">
+          <strong>Необязательно.</strong> Если достаточно обычного AmneziaWG без выхода части клиентов через Cloudflare — раздел можно не трогать (статус «Не установлен» — норма).
+          Если WARP нужен: выход в интернет через Cloudflare для <em>выбранных</em> клиентов (правила маршрутизации и NAT в контейнере).
+          Один раз на хосте VPS под root: в каталоге с репозиторием выполните <code class="inline">bash scripts/warp-amnezia.sh install</code>.
+          Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится). Убрать WARP полностью: <code class="inline">bash scripts/warp-amnezia.sh uninstall</code> — см. README.
+        </p>
+        <div id="warp-actions" class="warp-actions"></div>
+        <div id="warp-client-list" class="warp-client-list"></div>
+        <details class="raw warp-raw">
+          <summary>Вывод wg show warp</summary>
+          <pre id="warp-wg-show"></pre>
+        </details>
       </div>
-      <p class="muted warp-intro">
-        <strong>Необязательно.</strong> Если достаточно обычного AmneziaWG без выхода части клиентов через Cloudflare — раздел можно не трогать (статус «Не установлен» — норма).
-        Если WARP нужен: выход в интернет через Cloudflare для <em>выбранных</em> клиентов (правила маршрутизации и NAT в контейнере).
-        Один раз на хосте VPS под root: в каталоге с репозиторием выполните <code class="inline">bash scripts/warp-amnezia.sh install</code>.
-        Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится). Убрать WARP полностью: <code class="inline">bash scripts/warp-amnezia.sh uninstall</code> — см. README.
-      </p>
-      <div id="warp-actions" class="warp-actions"></div>
-      <div id="warp-client-list" class="warp-client-list"></div>
-      <details class="raw warp-raw">
-        <summary>Вывод wg show warp</summary>
-        <pre id="warp-wg-show"></pre>
-      </details>
-    </section>
+    </details>
 
-    <section class="panel cascade-panel" id="cascade-panel">
-      <div class="panel-head">
-        <h2>Новый клиент под каскад</h2>
+    <details class="panel-fold cascade-panel" id="cascade-panel" open>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Новый клиент под каскад</span>
+          <span class="muted fold-meta">Создать peer и скачать .conf</span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <p class="muted cascade-intro">
+          Укажите <strong>Endpoint</strong> — публичный IP или DNS узла, <em>куда клиент будет подключаться первым шагом</em>
+          (промежуточный сервер, домашний роутер с пробросом порта и т.д.). Порт по умолчанию совпадает с <code class="inline">ListenPort</code> этого инстанса.
+          Клиент будет <strong>создан на текущем сервере AmneziaWG</strong> (новые ключи); IP в туннеле можно задать явно или оставить пустым — подберём свободный в той же подсети, что у остальных.
+        </p>
+        <form id="cascade-form" class="cascade-form">
+          <label for="cascade-endpoint">Endpoint (хост для клиента)</label>
+          <input id="cascade-endpoint" type="text" placeholder="Например 203.0.113.50 или ddns.example.com" required autocomplete="off">
+
+          <label for="cascade-port">Порт Endpoint</label>
+          <input id="cascade-port" type="number" min="1" max="65535" placeholder="Пусто — как у сервера" autocomplete="off">
+
+          <label for="cascade-tunnel-ip">IP в VPN-туннеле (необязательно)</label>
+          <input id="cascade-tunnel-ip" type="text" placeholder="Например 10.8.1.20 — та же подсеть /24 что у других" autocomplete="off">
+
+          <label for="cascade-name">Имя в таблице</label>
+          <input id="cascade-name" type="text" placeholder="Например Телефон через узел X" autocomplete="off">
+
+          <button type="submit" class="btn primary">Создать на сервере и скачать .conf</button>
+        </form>
       </div>
-      <p class="muted cascade-intro">
-        Укажите <strong>Endpoint</strong> — публичный IP или DNS узла, <em>куда клиент будет подключаться первым шагом</em>
-        (промежуточный сервер, домашний роутер с пробросом порта и т.д.). Порт по умолчанию совпадает с <code class="inline">ListenPort</code> этого инстанса.
-        Клиент будет <strong>создан на текущем сервере AmneziaWG</strong> (новые ключи); IP в туннеле можно задать явно или оставить пустым — подберём свободный в той же подсети, что у остальных.
-      </p>
-      <form id="cascade-form" class="cascade-form">
-        <label for="cascade-endpoint">Endpoint (хост для клиента)</label>
-        <input id="cascade-endpoint" type="text" placeholder="Например 203.0.113.50 или ddns.example.com" required autocomplete="off">
+    </details>
 
-        <label for="cascade-port">Порт Endpoint</label>
-        <input id="cascade-port" type="number" min="1" max="65535" placeholder="Пусто — как у сервера" autocomplete="off">
-
-        <label for="cascade-tunnel-ip">IP в VPN-туннеле (необязательно)</label>
-        <input id="cascade-tunnel-ip" type="text" placeholder="Например 10.8.1.20 — та же подсеть /24 что у других" autocomplete="off">
-
-        <label for="cascade-name">Имя в таблице</label>
-        <input id="cascade-name" type="text" placeholder="Например Телефон через узел X" autocomplete="off">
-
-        <button type="submit" class="btn primary">Создать на сервере и скачать .conf</button>
-      </form>
-    </section>
-
-    <section class="panel" id="users-panel">
-        <span class="muted" id="peer-count"></span>
+    <details class="panel-fold" id="users-panel" open>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Пользователи</span>
+          <span class="muted fold-meta" id="peer-count"></span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <div class="table-wrap">
+          <table class="clients-table">
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>IP</th>
+                <th>Статус</th>
+                <th>Последнее отключение</th>
+                <th class="th-actions">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Имя</th>
-              <th>IP</th>
-              <th>Статус</th>
-              <th>Последнее отключение</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-    </section>
+    </details>
 
-    <details class="raw" id="wg-raw-details">
+    <details class="raw panel-fold-raw" id="wg-raw-details">
+      <summary class="fold-summary fold-summary--raw">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Вывод awg show (отладка)</span>
+        </span>
+      </summary>
       <pre id="wg-show"></pre>
     </details>
   </div>

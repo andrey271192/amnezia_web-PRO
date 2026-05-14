@@ -551,11 +551,17 @@ function renderRows(clients) {
     );
     nameWrap.append(strong, renameWrap);
     if (!c.exportAvailable) {
+      const hintFold = document.createElement("details");
+      hintFold.className = "hint-mini";
+      const sum = document.createElement("summary");
+      sum.textContent = "Нет готового .conf на сервере (last_config)";
+      hintFold.appendChild(sum);
       const exHint = document.createElement("p");
       exHint.className = "muted export-missing-hint";
       exHint.textContent =
         "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
-      nameWrap.appendChild(exHint);
+      hintFold.appendChild(exHint);
+      nameWrap.appendChild(hintFold);
     }
     nameTd.appendChild(nameWrap);
 
