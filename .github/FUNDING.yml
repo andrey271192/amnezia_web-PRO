@@ -1,8 +1,5 @@
-# Способы поддержки автора (GitHub показывает кнопку Sponsor на базе github:).
-# Прямые ссылки см. README → «Поддержка проекта» и футер веб-панели.
-
+# Как в https://github.com/andrey271192/domen_hydra/blob/main/.github/FUNDING.yml
 github: andrey271192
 
 custom:
-  # Boosty (пример из интерфейса проекта; замените на свой профиль при необходимости)
-  - https://boosty.to/lot_andrey
+  - https://boosty.to/andrey27/donate

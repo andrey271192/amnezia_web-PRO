@@ -111,18 +111,20 @@ ADMIN_PASSWORD=localtest node server.js
 
 ## Support links
 
-Поддержать проект — поставь звезду на GitHub или донат. Связаться с автором — Telegram.
+Те же способы поддержки и контакты, что в проекте [domen_hydra](https://github.com/andrey271192/domen_hydra):
+
+Если проект оказался полезным — буду рад поддержке. Это помогает развивать и поддерживать его дальше.
 
 | Способ | Ссылка |
 |--------|--------|
-| GitHub | [репозиторий](https://github.com/andrey271192/Amnezia_web) |
-| Boosty | [boosty.to/lot_andrey](https://boosty.to/lot_andrey) |
-| Ozon СБП | _добавьте свою постоянную ссылку СБП сюда и при желании замените цель ссылки «Ozon СБП» в `public/index.html`_ |
-| Telegram | [@lot_andrey](https://t.me/lot_andrey) |
+| GitHub | [Amnezia_web](https://github.com/andrey271192/Amnezia_web) |
+| Boosty | [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate) |
+| Ozon СБП | [ссылка оплаты Ozon](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) |
+| Telegram | [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, идеи, обратная связь |
 
-Файл [`.github/FUNDING.yml`](.github/FUNDING.yml) задаёт кнопку **Sponsor** на GitHub (см. [документацию GitHub](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository)).
+Файл [`.github/FUNDING.yml`](.github/FUNDING.yml) задаёт кнопку **Sponsor** на GitHub (как в [domen_hydra](https://github.com/andrey271192/domen_hydra)).
 
-Тот же блок поддержки продублирован в **футере веб-интерфейса** (как в эталонном макете: название · GitHub · Boosty · Ozon СБП · Telegram).
+Тот же блок поддержки продублирован в **футере веб-интерфейса**.
 
 ---
 
