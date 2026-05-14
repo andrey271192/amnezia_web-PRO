@@ -2,7 +2,7 @@
 # Установка Amnezia Admin WebUI одной командой (см. README).
 set -euo pipefail
 
-GITHUB_REPO="${GITHUB_REPO:-andrey271192/Amnezia_web}"
+GITHUB_REPO="${GITHUB_REPO:-andrey271192/Amnezia_web-PRO}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/amnezia-admin}"
 DATA_DIR="${DATA_DIR:-/opt/amnezia-admin-data}"
