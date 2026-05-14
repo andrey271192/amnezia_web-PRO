@@ -865,7 +865,6 @@ function sshRootRun(password, host, remoteCmd) {
       "-p",
       password,
       "ssh",
-      "-oBatchMode=yes",
       "-oStrictHostKeyChecking=no",
       "-oUserKnownHostsFile=/dev/null",
       "-oConnectTimeout=15",
