@@ -1,59 +1,367 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Сервер · AmneziaWG</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Подключение к VPN · частный сервер</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="page">
-  <main class="landing-main">
-    <p class="eyebrow">Этот сервер</p>
-    <h1>Управление AmneziaWG</h1>
-    <p class="lead">
-      Здесь установлена админ-панель для клиентов VPN. Перейдите по ссылке ниже (порт задаётся при установке, по умолчанию <strong>8080</strong>).
-    </p>
-    <p class="admin-row" id="admin-row"></p>
-  </main>
+<body>
 
-  <footer class="support-footer">
-    <div class="support-line">
-      <strong class="support-title">Amnezia Admin WebUI</strong>
-      <span class="support-sep" aria-hidden="true">·</span>
-      <a href="https://github.com/andrey271192/Amnezia_web" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
-      <span class="support-sep" aria-hidden="true">·</span>
-      <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener noreferrer">💖 Boosty</a>
-      <span class="support-sep" aria-hidden="true">·</span>
-      <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener noreferrer">💳 Ozon&nbsp;СБП</a>
-      <span class="support-sep" aria-hidden="true">·</span>
-      <a href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">✉️ Telegram&nbsp;@lot_andrey</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a href="#" class="logo"><span class="logo-icon" aria-hidden="true">🔒</span>Подключение к VPN</a>
+    <div class="header-actions">
+      <a id="admin-panel-link" class="header-admin" href="#">Админ-панель</a>
+      <div class="status-pill"><span class="status-dot"></span>Сервер активен</div>
     </div>
-    <p class="support-blurb">
-      Поддержать проект — поставь звезду на GitHub И донат. Связаться с автором — Telegram.
-    </p>
-  </footer>
+  </div>
+</header>
 
-  <script src="admin-port.js"></script>
-  <script>
-    (function () {
-      var port =
-        (typeof window.__AMNEZIA_ADMIN_PORT__ !== "undefined" && window.__AMNEZIA_ADMIN_PORT__) || "8080";
-      var h = location.hostname || "";
-      var proto = location.protocol || "http:";
-      var url = proto + "//" + h + ":" + port + "/";
-      var el = document.getElementById("admin-row");
-      if (el) {
-        el.innerHTML =
-          '<a class="admin-btn" href="' +
-          url +
-          '">Открыть админ-панель</a> <span class="muted-inline">' +
-          url +
-          "</span>";
-      }
-    })();
-  </script>
+<section class="hero">
+  <div class="hero-badge">Частный сервер</div>
+  <h1>Подключение к VPN</h1>
+  <p>Используйте приложение <strong>AmneziaVPN</strong>. Конфигурацию выдаёт администратор — импортируйте файл или ключ, который вам передали, и включите туннель. Ниже — пошаговые инструкции для WireGuard и Amnezia VPN.</p>
+</section>
+
+<section class="server-summary" aria-labelledby="server-card-title">
+  <div class="server-summary-card">
+    <div id="server-card-title" class="server-summary-label">Сервер</div>
+    <span class="server-addr-label">Адрес</span>
+    <div class="server-addr-row">
+      <div id="server-address-display" class="addr-box" aria-live="polite">—</div>
+      <button type="button" class="copy-btn" onclick="copyServerAddr(this)">Копировать</button>
+    </div>
+    <p class="services-line"><strong>Сервисы на машине:</strong> <span id="server-services">XRay (TCP) · AmneziaWG (UDP)</span></p>
+    <p class="server-note">Номера портов и тип протокола уже зашиты в конфиг Amnezia — вручную их обычно не вводят.</p>
+  </div>
+</section>
+
+<nav class="page-nav">
+  <button class="page-nav-btn active" onclick="switchPage('vpn',this)"> Подключение VPN</button>
+  <button class="page-nav-btn" onclick="switchPage('region',this)"> Смена региона App Store</button>
+</nav>
+
+<!-- PAGE: VPN -->
+<div class="page-section visible" id="page-vpn">
+  <div class="vpn-switcher">
+    <div class="vpn-tabs">
+      <button class="vpn-tab active" onclick="switchVpn('wg',this)">WireGuard <span class="vpn-tab-badge wg-badge">Стандарт</span></button>
+      <button class="vpn-tab" onclick="switchVpn('amn',this)">Amnezia VPN <span class="vpn-tab-badge amn-badge">Обход DPI</span></button>
+    </div>
+  </div>
+  <div class="content">
+
+    <!-- WIREGUARD -->
+    <div class="vpn-section visible" id="vpn-wg">
+      <div class="platform-selector" id="wg-plats">
+        <button class="plat-btn wg-active" onclick="switchPlat('wg','ios',this)"> iOS</button>
+        <button class="plat-btn" onclick="switchPlat('wg','android',this)"> Android</button>
+        <button class="plat-btn" onclick="switchPlat('wg','windows',this)"> Windows</button>
+        <button class="plat-btn" onclick="switchPlat('wg','macos',this)"> macOS</button>
+      </div>
+      <div class="steps-panel visible" id="wg-ios">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg ios-icon"></div><div class="guide-card-header-text"><h2>WireGuard на iOS</h2><p>iPhone и iPad · iOS 15 и новее</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle wg-circle">1</span><div class="step-body"><p>Откройте <b>App Store</b>, найдите <b>WireGuard</b> и нажмите «Установить»</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">2</span><div class="step-body"><p>Откройте приложение, нажмите <b>+</b> в правом верхнем углу</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">3</span><div class="step-body"><p>Выберите <b>«Сканировать QR-код»</b> и наведите камеру на QR — конфиг добавится автоматически</p><div class="alt-step">Или «Создать из файла» → выберите файл <span class="code-tag">.conf</span></div></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">4</span><div class="step-body"><p>Придумайте имя туннелю и нажмите <b>«Сохранить»</b></p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">5</span><div class="step-body"><p>Нажмите тумблер → появится запрос, нажмите <b>«Разрешить»</b></p></div></li>
+          </ul>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Тумблер зелёный — вы подключены. Значок VPN в строке статуса.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="wg-android">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg android-icon"></div><div class="guide-card-header-text"><h2>WireGuard на Android</h2><p>Android 8 и новее</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle wg-circle">1</span><div class="step-body"><p>Откройте <b>Google Play</b>, найдите <b>WireGuard</b> и установите</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">2</span><div class="step-body"><p>Запустите приложение, нажмите <b>синюю кнопку +</b> внизу</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">3</span><div class="step-body"><p>Выберите <b>«Сканировать QR-код»</b> и поднесите телефон к коду</p><div class="alt-step">Или «Создать из файла» → файл <span class="code-tag">.conf</span> из загрузок</div></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">4</span><div class="step-body"><p>Дайте имя туннелю и нажмите <b>«Создать туннель»</b></p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">5</span><div class="step-body"><p>Переключите тумблер → нажмите <b>«ОК»</b> в системном запросе</p></div></li>
+          </ul>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Значок замка  в строке состояния — VPN активен.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="wg-windows">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg windows-icon"></div><div class="guide-card-header-text"><h2>WireGuard на Windows</h2><p>Windows 10 и 11</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle wg-circle">1</span><div class="step-body"><p>Скачайте установщик с <b>wireguard.com/install</b> и запустите</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">2</span><div class="step-body"><p>Откройте WireGuard → <b>«Добавить туннель»</b> → <b>«Импорт из файла»</b></p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">3</span><div class="step-body"><p>Выберите ваш файл <span class="code-tag">.conf</span></p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">4</span><div class="step-body"><p>Нажмите <b>«Подключиться»</b> — статус сменится на «Активен»</p></div></li>
+          </ul>
+          <div class="notice notice-tip"><span class="notice-icon"></span><p>Если появится запрос UAC — нажмите «Да». Нужно для создания VPN-адаптера.</p></div>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Статус «Активен» — VPN работает.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="wg-macos">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg macos-icon"></div><div class="guide-card-header-text"><h2>WireGuard на macOS</h2><p>macOS 12 и новее</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle wg-circle">1</span><div class="step-body"><p>Установите <b>WireGuard</b> из Mac App Store</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">2</span><div class="step-body"><p>Откройте приложение → в меню <b>File → Import Tunnel(s)</b></p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">3</span><div class="step-body"><p>Выберите файл <span class="code-tag">.conf</span> и нажмите «Открыть»</p></div></li>
+            <li class="step-item"><span class="step-circle wg-circle">4</span><div class="step-body"><p>Нажмите <b>«Подключить»</b> и разрешите VPN в системных настройках</p></div></li>
+          </ul>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Иконка в меню-баре активна — вы подключены.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AMNEZIA -->
+    <div class="vpn-section" id="vpn-amn">
+      <div class="platform-selector" id="amn-plats">
+        <button class="plat-btn amn-active" onclick="switchPlat('amn','ios',this)"> iOS</button>
+        <button class="plat-btn" onclick="switchPlat('amn','android',this)"> Android</button>
+        <button class="plat-btn" onclick="switchPlat('amn','windows',this)"> Windows</button>
+        <button class="plat-btn" onclick="switchPlat('amn','macos',this)"> macOS</button>
+      </div>
+      <div class="steps-panel visible" id="amn-ios">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg ios-icon"></div><div class="guide-card-header-text"><h2>Amnezia VPN на iOS</h2><p>iPhone и iPad · Обходит глубокую блокировку</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle amn-circle">1</span><div class="step-body"><p>Откройте <b>App Store</b>, найдите <b>Amnezia VPN</b> и установите</p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">2</span><div class="step-body"><p>Запустите приложение и нажмите <b>«Добавить сервер»</b></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">3</span><div class="step-body"><p>Нажмите <b>«У меня есть файл настроек»</b> и выберите файл <span class="code-tag">.vpn</span></p><div class="alt-step">Или «Сканировать QR» → поднесите камеру к коду</div></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">4</span><div class="step-body"><p>Нажмите <b>«Подключиться»</b> и разрешите добавить VPN-профиль</p></div></li>
+          </ul>
+          <div class="notice notice-tip"><span class="notice-icon">️</span><p>Amnezia маскирует трафик под обычный HTTPS — работает там, где WireGuard блокируется.</p></div>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Кнопка стала оранжевой — вы защищены.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="amn-android">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg android-icon"></div><div class="guide-card-header-text"><h2>Amnezia VPN на Android</h2><p>Android 8 и новее</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle amn-circle">1</span><div class="step-body"><p>Установите <b>Amnezia VPN</b> из Google Play или APK с <b>amnezia.org</b></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">2</span><div class="step-body"><p>Откройте → <b>«Добавить сервер»</b></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">3</span><div class="step-body"><p>Нажмите <b>«Загрузить файл»</b> и выберите файл <span class="code-tag">.vpn</span></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">4</span><div class="step-body"><p>Нажмите <b>«Подключиться»</b> → разрешите системный запрос VPN</p></div></li>
+          </ul>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Замок в строке состояния — VPN работает.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="amn-windows">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg windows-icon"></div><div class="guide-card-header-text"><h2>Amnezia VPN на Windows</h2><p>Windows 10 и 11 · Протокол AmneziaWG</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle amn-circle">1</span><div class="step-body"><p>Скачайте с <b>amnezia.org</b> для Windows и запустите установщик</p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">2</span><div class="step-body"><p>Откройте → <b>«Добавить сервер»</b> → <b>«Открыть файл конфигурации»</b></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">3</span><div class="step-body"><p>Выберите файл <span class="code-tag">.vpn</span> и нажмите <b>«Подключиться»</b></p></div></li>
+          </ul>
+          <div class="notice notice-tip"><span class="notice-icon"></span><p>AmneziaWG — улучшенный WireGuard с обходом DPI.</p></div>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Индикатор зелёный — VPN активен.</p></div>
+        </div>
+      </div>
+      <div class="steps-panel" id="amn-macos">
+        <div class="guide-card">
+          <div class="guide-card-header"><div class="plat-icon-lg macos-icon"></div><div class="guide-card-header-text"><h2>Amnezia VPN на macOS</h2><p>macOS 12 и новее</p></div></div>
+          <ul class="step-list">
+            <li class="step-item"><span class="step-circle amn-circle">1</span><div class="step-body"><p>Скачайте с <b>amnezia.org</b> для macOS</p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">2</span><div class="step-body"><p>Перетащите в папку «Программы» и запустите</p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">3</span><div class="step-body"><p>Нажмите <b>«Добавить сервер»</b> → загрузите файл <span class="code-tag">.vpn</span></p></div></li>
+            <li class="step-item"><span class="step-circle amn-circle">4</span><div class="step-body"><p>Нажмите <b>«Подключиться»</b> и разрешите сетевые расширения в системных настройках</p></div></li>
+          </ul>
+          <div class="notice notice-success"><span class="notice-icon">✅</span><p>Иконка Amnezia в меню-баре активна — вы защищены.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ip-check-section">
+      <h3>Как проверить, что VPN работает?</h3>
+      <div class="check-cards">
+        <div class="check-card"><span class="n">1.</span> Откройте <span class="code-tag">2ip.ru</span> или <span class="code-tag">whatismyip.com</span></div>
+        <div class="check-card"><span class="n">2.</span> Страна должна измениться на страну вашего сервера</div>
+        <div class="check-card"><span class="n">3.</span> Попробуйте открыть нужный сайт — загрузится</div>
+      </div>
+    </div>
+
+    <div class="trouble-section">
+      <h3>Что делать, если что-то пошло не так</h3>
+      <div class="trouble-grid">
+        <div class="trouble-card"><div class="trouble-icon"></div><div class="trouble-title">VPN не подключается</div><ul class="trouble-list"><li>Перезапустите приложение</li><li>Выключите/включите Wi-Fi или мобильный интернет</li><li>Удалите туннель и добавьте конфиг заново</li><li>Попробуйте другую сеть</li></ul></div>
+        <div class="trouble-card"><div class="trouble-icon"></div><div class="trouble-title">VPN включён, нет интернета</div><ul class="trouble-list"><li>Отключитесь и подключитесь снова</li><li>Убедитесь, что конфиг актуальный</li><li>Перезагрузите устройство</li><li>Напишите в поддержку</li></ul></div>
+        <div class="trouble-card"><div class="trouble-icon"></div><div class="trouble-title">Сайты не открываются</div><ul class="trouble-list"><li>Очистите кеш браузера</li><li>Смените DNS на 1.1.1.1</li><li>Откройте в режиме инкогнито</li><li>Попробуйте другой браузер</li></ul></div>
+        <div class="trouble-card"><div class="trouble-icon"></div><div class="trouble-title">Медленная скорость</div><ul class="trouble-list"><li>Проверьте скорость без VPN</li><li>Переподключитесь</li><li>Закройте лишние приложения</li><li>Переключитесь Wi-Fi ↔ 4G</li></ul></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- PAGE: REGION -->
+<div class="page-section" id="page-region">
+  <div class="content">
+    <div class="region-hero">
+      <h2>Смена региона App Store</h2>
+      <p>Пошаговые инструкции для iPhone и iPad</p>
+    </div>
+    <div class="region-tabs">
+      <button class="region-tab active" onclick="switchRegion('kz',this)"> Казахстан</button>
+      <button class="region-tab" onclick="switchRegion('us',this)"> США</button>
+    </div>
+
+    <div class="region-panel visible" id="region-kz">
+      <div class="warn-box"><span style="font-size:18px;flex-shrink:0;"></span><p>Смена региона позволяет скачивать приложения, недоступные в вашем регионе. Покупки сохранятся, но активные подписки могут потребовать подтверждения.</p></div>
+      <div class="guide-card">
+        <div class="guide-card-header"><div class="plat-icon-lg" style="background:linear-gradient(135deg,#1a4a1a,#2ea82e);"></div><div class="guide-card-header-text"><h2>Регион: Казахстан</h2><p>iPhone · iPad · iOS 15 и новее</p></div></div>
+        <ul class="step-list">
+          <li class="step-item"><span class="step-circle wg-circle">1</span><div class="step-body"><p>Откройте <b>Настройки</b> → нажмите на своё <b>имя</b> вверху</p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">2</span><div class="step-body"><p>Нажмите <b>«Медиаматериалы и покупки»</b> → <b>«Просмотр учётной записи»</b></p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">3</span><div class="step-body"><p>Нажмите <b>«Страна/Регион»</b> → <b>«Сменить страну или регион»</b></p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">4</span><div class="step-body"><p>Найдите и выберите <b>Казахстан</b></p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">5</span><div class="step-body"><p>Нажмите <b>«Принять»</b> условия</p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">6</span><div class="step-body"><p>Способ оплаты — выберите <b>«Нет»</b></p></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">7</span><div class="step-body"><p>Заполните адрес:</p><div class="addr-card"><div class="addr-card-title">Пример адреса · Алматы</div><div class="addr-row"><span class="addr-label">Город</span><span class="addr-val">Алматы</span></div><div class="addr-row"><span class="addr-label">Адрес</span><span class="addr-val">ул. Абая 1</span></div><div class="addr-row"><span class="addr-label">Индекс</span><span class="addr-val">050000</span></div><div class="addr-row"><span class="addr-label">Телефон</span><span class="addr-val">+7 727 000 0000</span></div></div></div></li>
+          <li class="step-item"><span class="step-circle wg-circle">8</span><div class="step-body"><p>Нажмите <b>«Далее»</b> — регион изменён</p></div></li>
+        </ul>
+        <div class="notice notice-success"><span class="notice-icon">✅</span><p>Готово! Откройте App Store — доступны приложения казахстанского региона.</p></div>
+      </div>
+    </div>
+
+    <div class="region-panel" id="region-us">
+      <div class="warn-box"><span style="font-size:18px;flex-shrink:0;"></span><p>Американский App Store даёт максимальный доступ к приложениям. Рекомендуем штат <b>Орегон</b> — там нет налога с продаж.</p></div>
+      <div class="guide-card">
+        <div class="guide-card-header"><div class="plat-icon-lg" style="background:linear-gradient(135deg,#1a3a6e,#3a6bd4);"></div><div class="guide-card-header-text"><h2>Регион: США · Oregon</h2><p>iPhone · iPad · Без налога с продаж</p></div></div>
+        <ul class="step-list">
+          <li class="step-item"><span class="step-circle amn-circle">1</span><div class="step-body"><p>Откройте <b>Настройки</b> → нажмите на своё <b>имя</b> вверху</p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">2</span><div class="step-body"><p>Нажмите <b>«Медиаматериалы и покупки»</b> → <b>«Просмотр учётной записи»</b></p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">3</span><div class="step-body"><p>Нажмите <b>«Страна/Регион»</b> → <b>«Сменить страну или регион»</b></p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">4</span><div class="step-body"><p>Найдите и выберите <b>Соединённые Штаты</b></p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">5</span><div class="step-body"><p>Нажмите <b>«Принять»</b> условия</p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">6</span><div class="step-body"><p>Способ оплаты — выберите <b>«None / Нет»</b></p></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">7</span><div class="step-body"><p>Заполните адрес (штат Орегон — без налогов):</p><div class="addr-card"><div class="addr-card-title">Пример адреса · Oregon, No Tax</div><div class="addr-row"><span class="addr-label">Street</span><span class="addr-val">1234 SW Main St</span></div><div class="addr-row"><span class="addr-label">City</span><span class="addr-val">Portland</span></div><div class="addr-row"><span class="addr-label">State</span><span class="addr-val">Oregon (OR)</span></div><div class="addr-row"><span class="addr-label">ZIP</span><span class="addr-val">97201</span></div><div class="addr-row"><span class="addr-label">Phone</span><span class="addr-val">503-555-0100</span></div></div></div></li>
+          <li class="step-item"><span class="step-circle amn-circle">8</span><div class="step-body"><p>Нажмите <b>«Далее»</b> — регион изменён</p></div></li>
+        </ul>
+        <div class="notice notice-success"><span class="notice-icon">✅</span><p>Готово! Бесплатные приложения доступны сразу — без карты.</p></div>
+        <div class="notice notice-tip"><span class="notice-icon"></span><p>Для платных нужна американская карта или подарочная карта iTunes (Gift Card).</p></div>
+      </div>
+      <div class="ip-check-section" style="margin-top:1.5rem;">
+        <h3>Как вернуть свой регион обратно?</h3>
+        <div class="check-cards">
+          <div class="check-card"><span class="n">1.</span> Повторите шаги 1–3 из инструкции выше</div>
+          <div class="check-card"><span class="n">2.</span> Выберите свою страну из списка</div>
+          <div class="check-card"><span class="n">3.</span> Скачанные приложения останутся на телефоне</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <p class="site-footer-lead">Возникли проблемы с подключением — напишите администратору сервера.</p>
+  <div class="support-line">
+    <strong class="support-title">Amnezia Admin WebUI</strong>
+    <span class="support-sep" aria-hidden="true">·</span>
+    <a href="https://github.com/andrey271192/Amnezia_web" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <span class="support-sep" aria-hidden="true">·</span>
+    <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener noreferrer">Boosty</a>
+    <span class="support-sep" aria-hidden="true">·</span>
+    <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener noreferrer">Ozon&nbsp;СБП</a>
+    <span class="support-sep" aria-hidden="true">·</span>
+    <a href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">Telegram&nbsp;@lot_andrey</a>
+  </div>
+  <p class="support-blurb">Поддержать проект — звезда на GitHub и донат. Связаться с автором — Telegram.</p>
+  <p class="disclaimer-footer">Страница только для приглашённых пользователей. Не передавайте конфиг третьим лицам.</p>
+</footer>
+
+<script src="admin-port.js"></script>
+<script>
+(function () {
+  var port =
+    (typeof window.__AMNEZIA_ADMIN_PORT__ !== "undefined" && window.__AMNEZIA_ADMIN_PORT__) || "8080";
+  var h = location.hostname || "";
+  var proto = location.protocol || "http:";
+  var adminUrl = proto + "//" + h + ":" + port + "/";
+  var a = document.getElementById("admin-panel-link");
+  if (a) {
+    a.href = adminUrl;
+    a.title = "Открыть в новой вкладке: " + adminUrl;
+  }
+  var ipEl = document.getElementById("server-address-display");
+  if (ipEl) {
+    ipEl.textContent = h || "—";
+  }
+})();
+
+function copyServerAddr(btn) {
+  var t = document.getElementById("server-address-display");
+  if (!t) return;
+  var v = (t.textContent || "").trim();
+  if (!v || v === "—") return;
+  function done() {
+    if (!btn) return;
+    var prev = btn.dataset.prevLabel || btn.textContent;
+    btn.dataset.prevLabel = prev;
+    btn.textContent = "Скопировано";
+    btn.classList.add("copied");
+    setTimeout(function () {
+      btn.textContent = btn.dataset.prevLabel;
+      btn.classList.remove("copied");
+    }, 1800);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(v).then(done).catch(function () {
+      fallbackCopy(v, done);
+    });
+  } else {
+    fallbackCopy(v, done);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    if (cb) cb();
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
+function switchPage(page, btn) {
+  document.querySelectorAll('.page-section').forEach(function(s){ s.classList.remove('visible'); });
+  document.getElementById('page-' + page).classList.add('visible');
+  document.querySelectorAll('.page-nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function switchVpn(vpn, btn) {
+  document.querySelectorAll('.vpn-section').forEach(function(s){ s.classList.remove('visible'); });
+  document.getElementById('vpn-' + vpn).classList.add('visible');
+  document.querySelectorAll('.vpn-tab').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+function switchPlat(vpn, plat, btn) {
+  ['ios','android','windows','macos'].forEach(function(p){
+    var el = document.getElementById(vpn+'-'+p);
+    if(el) el.classList.remove('visible');
+  });
+  var t = document.getElementById(vpn+'-'+plat);
+  if(t) t.classList.add('visible');
+  var sel = document.getElementById(vpn+'-plats');
+  if(sel) sel.querySelectorAll('.plat-btn').forEach(function(b){ b.classList.remove('wg-active','amn-active'); });
+  btn.classList.add(vpn==='wg' ? 'wg-active' : 'amn-active');
+}
+function switchRegion(r, btn) {
+  document.querySelectorAll('.region-panel').forEach(function(p){ p.classList.remove('visible'); });
+  document.getElementById('region-'+r).classList.add('visible');
+  document.querySelectorAll('.region-tab').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+</script>
 </body>
 </html>
