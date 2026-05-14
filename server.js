@@ -40,7 +40,9 @@ const UI_HIDDEN = resolveUiHidden();
 
 const AMNEZIA_EDITION = (process.env.AMNEZIA_EDITION || "pro").trim().toLowerCase();
 const IS_COMMUNITY = AMNEZIA_EDITION === "community";
-const COMMUNITY_UPGRADE_URL = process.env.COMMUNITY_UPGRADE_URL?.trim() || "https://boosty.to/andrey27/donate";
+const COMMUNITY_UPGRADE_URL =
+  process.env.COMMUNITY_UPGRADE_URL?.trim() ||
+  "https://boosty.to/andrey27/purchase/3906453?ssource=DIRECT&share=subscription_link";
 const COMMUNITY_UPGRADE_PITCH =
   process.env.COMMUNITY_UPGRADE_PITCH?.trim() ||
   "В PRO: вкл/выкл клиентов, даты и расписание отключений, переименование, удаление, экспорт .conf, каскад, Cloudflare WARP, синхронизация времени хоста. Полная сборка — приватный репозиторий amnezia_web-PRO; доступ по подписке Boosty.";

@@ -116,7 +116,9 @@ function applyEditionPayload(data) {
       cta.className = "btn small primary edition-banner-cta";
       cta.rel = "noopener noreferrer";
       cta.target = "_blank";
-      cta.href = editionState.upgradeUrl || "https://boosty.to/andrey27/donate";
+      cta.href =
+        editionState.upgradeUrl ||
+        "https://boosty.to/andrey27/purchase/3906453?ssource=DIRECT&share=subscription_link";
       cta.textContent = "Разблокировать PRO (Boosty)";
       wrap.append(textCol, cta);
       editionBanner.appendChild(wrap);
