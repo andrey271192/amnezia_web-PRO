@@ -29,7 +29,7 @@
       <div>
         <p class="eyebrow">Панель сервера</p>
         <h1>Пользователи AmneziaWG</h1>
-        <p class="sub">Дату отключения вы задаёте сами: при «Выключить» или в диалоге «Задать дату» (для активных клиентов там можно отметить выключение из туннеля). Время — локальное на вашем компьютере.</p>
+        <p class="sub">Дату отключения задаёте сами (локальное время браузера). Кнопка «Выключить» убирает клиента из туннеля сразу. «Задать дату» без галочки — только запись в таблице; с галочкой — клиент остаётся в туннеле до наступления времени. Несколько инстансов AmneziaWG (Legacy и др.) — в переменной AWG_PROFILES и списке «Инстанс».</p>
       </div>
       <div class="token-box">
         <div class="session-actions">
@@ -52,7 +52,11 @@
     </header>
 
     <section class="toolbar">
-      <div class="pill"><span class="dot ok"></span><span id="proto-label">Протокол: AmneziaWG</span></div>
+      <div class="pill proto-pill"><span class="dot ok"></span><span id="proto-label">Протокол: AmneziaWG</span></div>
+      <div id="proto-switch" class="proto-switch hidden">
+        <label for="proto-select" class="proto-switch-label muted">Инстанс</label>
+        <select id="proto-select" class="proto-select" aria-label="Инстанс AmneziaWG"></select>
+      </div>
       <div class="clock-strip" role="status" aria-live="polite">
         <div class="clock-row">
           <span class="muted clock-kind">Сервер</span>
@@ -127,8 +131,8 @@
       <div id="dt-dialog-extra" class="dt-dialog-extra hidden">
         <p class="dt-dialog-hint" id="dt-dialog-hint"></p>
         <label class="dt-checkbox-label">
-          <input type="checkbox" id="dt-dialog-also-disable">
-          Выключить клиента из туннеля AmneziaWG (убрать из awg0.conf)
+          <input type="checkbox" id="dt-dialog-schedule-tunnel">
+          Убрать из туннеля в указанное время (до этого клиент остаётся в туннеле)
         </label>
       </div>
       <div class="dt-dialog-actions">

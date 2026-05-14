@@ -14,6 +14,10 @@ const statusEl = document.querySelector("#status");
 const peerCountEl = document.querySelector("#peer-count");
 const wgShowEl = document.querySelector("#wg-show");
 
+const protoSwitch = document.querySelector("#proto-switch");
+const protoSelect = document.querySelector("#proto-select");
+const protoLabel = document.querySelector("#proto-label");
+
 const pwForm = document.querySelector("#pw-form");
 const pwCurrent = document.querySelector("#pw-current");
 const pwNew = document.querySelector("#pw-new");
@@ -28,7 +32,7 @@ const dtCancel = document.querySelector("#dt-dialog-cancel");
 const dtOk = document.querySelector("#dt-dialog-ok");
 const dtExtra = document.querySelector("#dt-dialog-extra");
 const dtHint = document.querySelector("#dt-dialog-hint");
-const dtAlsoDisable = document.querySelector("#dt-dialog-also-disable");
+const dtScheduleTunnel = document.querySelector("#dt-dialog-schedule-tunnel");
 
 let dtMode = "disable";
 /** @type {Record<string, unknown> | null} */
@@ -61,7 +65,7 @@ function openDisableDialog(c) {
   dtOk.textContent = "Выключить";
   dtInput.value = isoToDatetimeLocal(new Date().toISOString());
   dtExtra.classList.add("hidden");
-  dtAlsoDisable.checked = false;
+  dtScheduleTunnel.checked = false;
   dtDialog.showModal();
 }
 
@@ -72,16 +76,19 @@ function openEditDisconnectDialog(c) {
   dtClientEl.textContent = c.name;
   dtOk.textContent = "Сохранить";
   const iso =
-    c.lastDisconnectedAt || (!c.activeInConf && c.disabledAt) || new Date().toISOString();
+    (c.activeInConf && c.scheduledTunnelDisconnectAt) ||
+    c.lastDisconnectedAt ||
+    (!c.activeInConf && c.disabledAt) ||
+    new Date().toISOString();
   dtInput.value = isoToDatetimeLocal(iso);
   if (c.activeInConf) {
     dtExtra.classList.remove("hidden");
     dtHint.textContent =
-      "Без галочки меняется только дата в таблице — в туннеле клиент остаётся. Чтобы реально отключить ключ, включите «Выключить из туннеля».";
-    dtAlsoDisable.checked = false;
+      "Без галочки — только запись даты в таблице, клиент остаётся в туннеле. С галочкой ключ будет убран из туннеля автоматически в выбранный момент (проверка на сервере каждые ~60 с).";
+    dtScheduleTunnel.checked = Boolean(c.scheduledTunnelDisconnectAt);
   } else {
     dtExtra.classList.add("hidden");
-    dtAlsoDisable.checked = false;
+    dtScheduleTunnel.checked = false;
   }
   dtDialog.showModal();
 }
@@ -108,19 +115,16 @@ dtOk.addEventListener("click", async () => {
         body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
       });
     } else {
-      const alsoTunnel = Boolean(dtAlsoDisable.checked && dtClient.activeInConf);
-      setStatus(alsoTunnel ? "Выключаю из туннеля…" : "Сохраняю дату…", false);
-      if (alsoTunnel) {
-        await api("/api/clients/disable", {
-          method: "POST",
-          body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
-        });
-      } else {
-        await api("/api/clients/disconnect-date", {
-          method: "POST",
-          body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
-        });
-      }
+      const scheduleTunnel = Boolean(dtScheduleTunnel.checked && dtClient.activeInConf);
+      setStatus(scheduleTunnel ? "Сохраняю расписание отключения…" : "Сохраняю дату…", false);
+      await api("/api/clients/disconnect-date", {
+        method: "POST",
+        body: JSON.stringify({
+          clientId: dtClient.clientId,
+          disconnectedAt: iso,
+          scheduleTunnelDisconnect: scheduleTunnel,
+        }),
+      });
     }
     dtDialog.close();
     dtClient = null;
@@ -187,6 +191,28 @@ async function checkSession() {
   }
 }
 
+async function loadProtocols() {
+  try {
+    const data = await api("/api/protocols");
+    protoLabel.textContent = `Протокол: ${data.currentLabel || "AmneziaWG"}`;
+    if (!data.profiles || data.profiles.length < 2) {
+      protoSwitch.classList.add("hidden");
+      return;
+    }
+    protoSwitch.classList.remove("hidden");
+    protoSelect.innerHTML = "";
+    for (const p of data.profiles) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.label} (${p.container})`;
+      if (p.id === data.currentId) opt.selected = true;
+      protoSelect.appendChild(opt);
+    }
+  } catch {
+    protoSwitch.classList.add("hidden");
+  }
+}
+
 loginForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   loginError.textContent = "";
@@ -197,6 +223,7 @@ loginForm.addEventListener("submit", async (ev) => {
     });
     loginPassword.value = "";
     showApp();
+    await loadProtocols();
     await loadClients();
   } catch (e) {
     loginError.textContent = String(e.message || e);
@@ -215,6 +242,22 @@ logoutBtn.addEventListener("click", async () => {
 
 refreshBtn.addEventListener("click", () => {
   loadClients();
+});
+
+protoSelect.addEventListener("change", async () => {
+  try {
+    setStatus("Смена инстанса…", false);
+    await api("/api/protocol", {
+      method: "POST",
+      body: JSON.stringify({ profileId: protoSelect.value }),
+    });
+    await loadProtocols();
+    await loadClients();
+    setStatus("", false);
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+    await loadProtocols();
+  }
 });
 
 clockSyncBtn.addEventListener("click", () => {
@@ -318,6 +361,12 @@ const dtRu = new Intl.DateTimeFormat("ru-RU", {
 });
 
 function formatLastDisconnect(c) {
+  if (c.scheduledTunnelDisconnectAt && c.activeInConf) {
+    const d = new Date(String(c.scheduledTunnelDisconnectAt));
+    if (!Number.isNaN(d.getTime())) {
+      return `${dtRu.format(d)} · авто`;
+    }
+  }
   const iso =
     c.lastDisconnectedAt ||
     (!c.activeInConf && c.disabledAt) ||
@@ -470,7 +519,8 @@ async function loadClients() {
   try {
     setStatus("Загрузка…", false);
     const data = await api("/api/clients");
-    peerCountEl.textContent = `${data.clients.length} в таблице · ${data.peerCount} peer в awg0.conf`;
+    const pref = data.profileLabel ? `${data.profileLabel} · ` : "";
+    peerCountEl.textContent = `${pref}${data.clients.length} в таблице · ${data.peerCount} peer`;
     wgShowEl.textContent = data.wgShow || "";
     renderRows(data.clients);
     setStatus("", false);
@@ -494,6 +544,7 @@ async function boot() {
   const ok = await checkSession();
   if (ok) {
     showApp();
+    await loadProtocols();
     await loadClients();
   } else {
     showLogin();

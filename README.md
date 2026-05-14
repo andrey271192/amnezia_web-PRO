@@ -36,6 +36,8 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
 | `HOST_PORT` | `8080` | Порт HTTP панели на хосте |
 | `AWG_CONTAINER` | `amnezia-awg2` | Имя контейнера Amnezia WG |
+| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе |
+| `SCHEDULE_DISCONNECT_MS` | `60000` | Как часто планировщик проверяет отложенное отключение из туннеля (мс) |
 | `ADMIN_PASSWORD` | _(генерируется)_ | Первый пароль вместо файла |
 | `SKIP_DOWNLOAD` | `0` | `1` — не качать GitHub, собрать из `INSTALL_DIR` |
 | `ALLOW_DEFAULT_PASSWORD` | `0` | `1` — см. раздел «Пароль» ниже |
@@ -43,6 +45,17 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `LANDING_PORT` | `80` | Порт nginx-лендинга (если `80` занят — например `8081`) |
 | `LANDING_CONTAINER` | `amnezia-web-landing` | Имя контейнера лендинга |
 | `NO_CACHE` | `0` | `1` — `docker build --no-cache` при проблемах с обновлением образа |
+
+#### Несколько инстансов (AmneziaWG + Legacy и т.д.)
+
+Пути и имена контейнеров на сервере могут отличаться — проверьте внутри контейнера (`docker exec … ls /opt/amnezia`). Пример **двух** профилей при запуске установщика (одна строка JSON в кавычках):
+
+```bash
+AWG_PROFILES='[{"id":"awg","label":"AmneziaWG","container":"amnezia-awg2","confPath":"/opt/amnezia/awg/awg0.conf","clientsPath":"/opt/amnezia/awg/clientsTable","iface":"awg0","wgBinary":"awg"},{"id":"legacy","label":"AmneziaWG Legacy","container":"amnezia-wg0","confPath":"/opt/amnezia/wireguard/wg0.conf","clientsPath":"/opt/amnezia/wireguard/clientsTable","iface":"wg0","wgBinary":"wg"}]' \
+curl -fsSL https://raw.githubusercontent.com/andrey271192/Amnezia_web/main/scripts/install.sh | sudo -E bash
+```
+
+Для **Legacy** часто используется обычный `wg`, для новой AmneziaWG — `awg`; подставьте свои `container`, `confPath`, `clientsPath`, `iface`, `pskPath` при необходимости.
 
 После установки: **админ-панель** `http://IP:8080` (или ваш `HOST_PORT`), **страница с поддержкой проекта** `http://IP/` на порту лендинга (по умолчанию **80**). Кнопка на лендинге ведёт на админку с тем же `HOST_PORT`.
 

@@ -201,8 +201,30 @@ h1 {
   margin-top: 1.25rem;
   display: flex;
   gap: 0.75rem;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
+}
+
+.proto-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+}
+
+.proto-switch-label {
+  font-size: 0.78rem;
+}
+
+.proto-select {
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0a0f16;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  max-width: 22rem;
 }
 
 .clock-strip {

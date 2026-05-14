@@ -97,6 +97,10 @@ RUN_ENV=(
   -e AWG_CONTAINER="${AWG_CONTAINER:-amnezia-awg2}"
 )
 
+if [[ -n "${AWG_PROFILES:-}" ]]; then
+  RUN_ENV+=( -e "AWG_PROFILES=${AWG_PROFILES}" )
+fi
+
 if [[ -n "${BOOT_PW}" ]]; then
   RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
 elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then

@@ -8,9 +8,50 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT || 3980);
-const CONTAINER = process.env.AWG_CONTAINER || "amnezia-awg2";
-const AWG_CONF = "/opt/amnezia/awg/awg0.conf";
-const CLIENTS_JSON = "/opt/amnezia/awg/clientsTable";
+const PROFILE_COOKIE = "amnezia_prof";
+const SCHEDULER_MS = Number(process.env.SCHEDULE_DISCONNECT_MS || 60_000);
+
+function parseProfilesFromEnv() {
+  const raw = process.env.AWG_PROFILES?.trim();
+  const fallback = () => [
+    {
+      id: "awg",
+      label: process.env.AWG_PROFILE_LABEL || "AmneziaWG",
+      container: process.env.AWG_CONTAINER || "amnezia-awg2",
+      confPath: process.env.AWG_CONF_PATH || "/opt/amnezia/awg/awg0.conf",
+      clientsPath: process.env.AWG_CLIENTS_PATH || "/opt/amnezia/awg/clientsTable",
+      iface: process.env.AWG_IFACE || "awg0",
+      wgBinary: process.env.AWG_BINARY || "awg",
+      pskPath: process.env.AWG_PSK_PATH || "/opt/amnezia/awg/wireguard_psk.key",
+    },
+  ];
+  if (!raw) return fallback();
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length === 0) return fallback();
+    return arr
+      .map((row, i) => ({
+        id: String(row.id ?? `p${i}`),
+        label: String(row.label ?? row.id ?? `Профиль ${i + 1}`),
+        container: String(row.container ?? ""),
+        confPath: String(row.confPath ?? row.conf ?? "/opt/amnezia/awg/awg0.conf"),
+        clientsPath: String(row.clientsPath ?? row.clients ?? "/opt/amnezia/awg/clientsTable"),
+        iface: String(row.iface ?? row.IFACE ?? "awg0"),
+        wgBinary: String(row.wgBinary ?? row.binary ?? "awg"),
+        pskPath: String(row.pskPath ?? row.psk ?? "/opt/amnezia/awg/wireguard_psk.key"),
+      }))
+      .filter((p) => p.container);
+  } catch {
+    console.warn("AWG_PROFILES: невалидный JSON, используется профиль по умолчанию.");
+    return fallback();
+  }
+}
+
+const PROFILES = parseProfilesFromEnv();
+if (!PROFILES.length) {
+  console.error("Нет ни одного профиля AWG: укажите container в AWG_PROFILES или переменные по умолчанию.");
+  process.exit(1);
+}
 
 const DATA_DIR = process.env.DATA_DIR || "/data";
 const PW_FILE = path.join(DATA_DIR, "password.hash");
@@ -152,6 +193,20 @@ function getSessionToken(req) {
   return null;
 }
 
+function getProfileCookie(req) {
+  const raw = req.headers.cookie || "";
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const s = part.trim();
+    const eq = s.indexOf("=");
+    if (eq === -1) continue;
+    const k = decodeURIComponent(s.slice(0, eq).trim());
+    if (k !== PROFILE_COOKIE) continue;
+    return decodeURIComponent(s.slice(eq + 1).trim());
+  }
+  return null;
+}
+
 function cookieSecureFlag() {
   return process.env.COOKIE_SECURE === "1" || process.env.COOKIE_SECURE === "true";
 }
@@ -169,6 +224,14 @@ function clearSessionCookie(res) {
   res.setHeader(
     "Set-Cookie",
     `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${sec ? "; Secure" : ""}`
+  );
+}
+
+function setProfileCookie(res, profileId) {
+  const sec = cookieSecureFlag();
+  res.setHeader(
+    "Set-Cookie",
+    `${PROFILE_COOKIE}=${encodeURIComponent(profileId)}; Max-Age=${31536000}; Path=/; SameSite=Lax${sec ? "; Secure" : ""}`
   );
 }
 
@@ -202,34 +265,91 @@ function execDocker(args, stdin = null) {
   });
 }
 
-async function dockerExec(cmd) {
-  const { stdout, stderr } = await execDocker([
-    "exec",
-    CONTAINER,
-    "sh",
-    "-c",
-    cmd,
-  ]);
-  return stdout + stderr;
+function createRuntime(profile) {
+  const container = profile.container;
+  const confPath = profile.confPath;
+  const clientsPath = profile.clientsPath;
+  const iface = profile.iface;
+  const wgBinary = profile.wgBinary;
+  const pskPath = profile.pskPath;
+
+  async function dockerExec(cmd) {
+    const { stdout, stderr } = await execDocker(["exec", container, "sh", "-c", cmd]);
+    return stdout + stderr;
+  }
+
+  async function dockerReadFile(remotePath) {
+    const { stdout } = await execDocker(["exec", container, "cat", remotePath]);
+    return stdout;
+  }
+
+  async function dockerWriteFile(remotePath, content) {
+    await execDocker(
+      [
+        "exec",
+        "-i",
+        container,
+        "sh",
+        "-c",
+        `cat > '${remotePath}.tmp' && mv '${remotePath}.tmp' '${remotePath}'`,
+      ],
+      content
+    );
+  }
+
+  async function backupRemoteFiles() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await dockerExec(`cp '${confPath}' '${confPath}.bak-admin-${stamp}' 2>/dev/null || true`);
+    await dockerExec(
+      `cp '${clientsPath}' '${clientsPath}.bak-admin-${stamp}' 2>/dev/null || true`
+    );
+  }
+
+  async function applySyncconf() {
+    await dockerExec(
+      `wg-quick strip '${confPath}' > /tmp/wg-admin-strip.conf && ${wgBinary} syncconf ${iface} /tmp/wg-admin-strip.conf`
+    );
+  }
+
+  async function loadState() {
+    const [confText, tableText] = await Promise.all([
+      dockerReadFile(confPath),
+      dockerReadFile(clientsPath),
+    ]);
+    const conf = splitAwgConf(confText);
+    const clients = parseClientsTable(tableText);
+    const peerByKey = new Map(conf.peers.map((p) => [p.publicKey, p]));
+    return { confText, conf, clients, peerByKey };
+  }
+
+  async function inferPskFromConf(conf) {
+    if (conf.peers.length) return conf.peers[0].presharedKey;
+    try {
+      const text = await dockerReadFile(pskPath);
+      return text.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    profile,
+    dockerExec,
+    dockerReadFile,
+    dockerWriteFile,
+    backupRemoteFiles,
+    applySyncconf,
+    loadState,
+    inferPskFromConf,
+    confPath,
+    clientsPath,
+  };
 }
 
-async function dockerReadFile(remotePath) {
-  const { stdout } = await execDocker(["exec", CONTAINER, "cat", remotePath]);
-  return stdout;
-}
-
-async function dockerWriteFile(remotePath, content) {
-  await execDocker(
-    [
-      "exec",
-      "-i",
-      CONTAINER,
-      "sh",
-      "-c",
-      `cat > '${remotePath}.tmp' && mv '${remotePath}.tmp' '${remotePath}'`,
-    ],
-    content
-  );
+function runtimeForRequest(req) {
+  const wanted = getProfileCookie(req);
+  const profile = PROFILES.find((p) => p.id === wanted) || PROFILES[0];
+  return createRuntime(profile);
 }
 
 function splitAwgConf(text) {
@@ -267,40 +387,56 @@ function stringifyClientsTable(rows) {
   return `${JSON.stringify(rows, null, 4)}\n`;
 }
 
-async function backupRemoteFiles() {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  await dockerExec(
-    `cp '${AWG_CONF}' '${AWG_CONF}.bak-admin-${stamp}' 2>/dev/null || true`
-  );
-  await dockerExec(
-    `cp '${CLIENTS_JSON}' '${CLIENTS_JSON}.bak-admin-${stamp}' 2>/dev/null || true`
-  );
+async function disableClient(rt, clientId, ts) {
+  await rt.backupRemoteFiles();
+  const { conf, clients } = await rt.loadState();
+  const peer = conf.peers.find((p) => p.publicKey === clientId);
+  if (!peer) {
+    throw new Error("Peer not in config (already disabled?)");
+  }
+  const nextPeers = conf.peers.filter((p) => p.publicKey !== clientId);
+  const nextConfText = serializeAwgConf(conf.head, nextPeers);
+  const idx = clients.findIndex((c) => c.clientId === clientId);
+  if (idx === -1) throw new Error("Client not in clientsTable");
+  const ud = { ...(clients[idx].userData || {}) };
+  ud.disabled = true;
+  ud.disabledAt = ts;
+  ud.lastDisconnectedAt = ts;
+  delete ud.scheduledTunnelDisconnectAt;
+  ud.preservedPresharedKey = peer.presharedKey || ud.preservedPresharedKey;
+  ud.preservedAllowedIPs = peer.allowedIPs || ud.preservedAllowedIPs;
+  clients[idx] = { ...clients[idx], userData: ud };
+  await rt.dockerWriteFile(rt.confPath, nextConfText);
+  await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
+  await rt.applySyncconf();
 }
 
-async function applySyncconf() {
-  await dockerExec(
-    `wg-quick strip '${AWG_CONF}' > /tmp/wg-admin-strip.conf && awg syncconf awg0 /tmp/wg-admin-strip.conf`
-  );
+async function processScheduledDisconnects(rt) {
+  const now = Date.now();
+  const { clients, peerByKey } = await rt.loadState();
+  const due = [];
+  for (const c of clients) {
+    const ud = c.userData || {};
+    const iso = ud.scheduledTunnelDisconnectAt;
+    if (!iso || !peerByKey.get(c.clientId)) continue;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t) || t > now) continue;
+    due.push({ clientId: c.clientId, ts: new Date(iso).toISOString() });
+  }
+  if (!due.length) return;
+  await rt.backupRemoteFiles();
+  for (const { clientId, ts } of due) {
+    try {
+      await disableClient(rt, clientId, ts);
+    } catch (e) {
+      console.error(`scheduled off ${clientId} [${rt.profile.id}]:`, e);
+    }
+  }
 }
 
-async function loadState() {
-  const [confText, tableText] = await Promise.all([
-    dockerReadFile(AWG_CONF),
-    dockerReadFile(CLIENTS_JSON),
-  ]);
-  const conf = splitAwgConf(confText);
-  const clients = parseClientsTable(tableText);
-  const peerByKey = new Map(conf.peers.map((p) => [p.publicKey, p]));
-  return { confText, conf, clients, peerByKey };
-}
-
-async function inferPskFromConf(conf) {
-  if (conf.peers.length) return conf.peers[0].presharedKey;
-  try {
-    const text = await dockerReadFile("/opt/amnezia/awg/wireguard_psk.key");
-    return text.trim();
-  } catch {
-    return null;
+async function processAllScheduledDisconnects() {
+  for (const profile of PROFILES) {
+    await processScheduledDisconnects(createRuntime(profile));
   }
 }
 
@@ -404,15 +540,39 @@ app.post("/api/change-password", requireAuth, (req, res) => {
   res.json({ ok: true, message: "Пароль изменён. Войдите снова." });
 });
 
-app.get("/api/clients", requireAuth, async (_req, res) => {
+app.get("/api/protocols", requireAuth, (req, res) => {
+  const rt = runtimeForRequest(req);
+  res.json({
+    currentId: rt.profile.id,
+    currentLabel: rt.profile.label,
+    profiles: PROFILES.map((p) => ({
+      id: p.id,
+      label: p.label,
+      container: p.container,
+    })),
+  });
+});
+
+app.post("/api/protocol", requireAuth, (req, res) => {
+  const id = req.body?.profileId;
+  if (typeof id !== "string" || !PROFILES.some((p) => p.id === id)) {
+    res.status(400).json({ error: "Неизвестный profileId" });
+    return;
+  }
+  setProfileCookie(res, id);
+  res.json({ ok: true });
+});
+
+app.get("/api/clients", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   try {
     let wgShow = "";
     try {
-      wgShow = await dockerExec(`awg show awg0`);
+      wgShow = await rt.dockerExec(`${rt.profile.wgBinary} show ${rt.profile.iface}`);
     } catch {
       wgShow = "";
     }
-    const { conf, clients, peerByKey } = await loadState();
+    const { conf, clients, peerByKey } = await rt.loadState();
     const rows = clients.map((c) => {
       const id = c.clientId;
       const peer = peerByKey.get(id);
@@ -426,6 +586,7 @@ app.get("/api/clients", requireAuth, async (_req, res) => {
         disabled: !activeInConf,
         disabledAt: ud.disabledAt || null,
         lastDisconnectedAt: ud.lastDisconnectedAt || null,
+        scheduledTunnelDisconnectAt: ud.scheduledTunnelDisconnectAt || null,
         creationDate: ud.creationDate || null,
         latestHandshake: ud.latestHandshake || null,
         dataReceived: ud.dataReceived || null,
@@ -433,7 +594,9 @@ app.get("/api/clients", requireAuth, async (_req, res) => {
       };
     });
     res.json({
-      container: CONTAINER,
+      profileId: rt.profile.id,
+      profileLabel: rt.profile.label,
+      container: rt.profile.container,
       protocol: "AmneziaWG",
       peerCount: conf.peers.length,
       clients: rows,
@@ -446,6 +609,7 @@ app.get("/api/clients", requireAuth, async (_req, res) => {
 });
 
 app.post("/api/clients/disable", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   let ts;
@@ -455,41 +619,25 @@ app.post("/api/clients/disable", requireAuth, async (req, res) => {
     return res.status(400).json({ error: String(e.message || e) });
   }
   try {
-    await backupRemoteFiles();
-    const { conf, clients } = await loadState();
-    const peer = conf.peers.find((p) => p.publicKey === clientId);
-    if (!peer) {
-      return res.status(404).json({ error: "Peer not in config (already disabled?)" });
-    }
-    const nextPeers = conf.peers.filter((p) => p.publicKey !== clientId);
-    const nextConfText = serializeAwgConf(conf.head, nextPeers);
-    const idx = clients.findIndex((c) => c.clientId === clientId);
-    if (idx === -1) {
-      return res.status(404).json({ error: "Client not in clientsTable" });
-    }
-    const ud = { ...(clients[idx].userData || {}) };
-    ud.disabled = true;
-    ud.disabledAt = ts;
-    ud.lastDisconnectedAt = ts;
-    ud.preservedPresharedKey = peer.presharedKey || ud.preservedPresharedKey;
-    ud.preservedAllowedIPs = peer.allowedIPs || ud.preservedAllowedIPs;
-    clients[idx] = { ...clients[idx], userData: ud };
-    await dockerWriteFile(AWG_CONF, nextConfText);
-    await dockerWriteFile(CLIENTS_JSON, stringifyClientsTable(clients));
-    await applySyncconf();
+    await disableClient(rt, clientId, ts);
     res.json({ ok: true });
   } catch (e) {
+    const msg = String(e.message || e);
+    if (msg.includes("already disabled") || msg.includes("Peer not in config")) {
+      return res.status(404).json({ error: msg });
+    }
     console.error(e);
-    res.status(500).json({ error: String(e.message || e) });
+    res.status(500).json({ error: msg });
   }
 });
 
 app.post("/api/clients/enable", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   try {
-    await backupRemoteFiles();
-    const { conf, clients } = await loadState();
+    await rt.backupRemoteFiles();
+    const { conf, clients } = await rt.loadState();
     const existing = conf.peers.find((p) => p.publicKey === clientId);
     if (existing) {
       return res.status(409).json({ error: "Peer already enabled" });
@@ -502,7 +650,7 @@ app.post("/api/clients/enable", requireAuth, async (req, res) => {
     const psk =
       ud.preservedPresharedKey ||
       conf.peers[0]?.presharedKey ||
-      (await inferPskFromConf(conf));
+      (await rt.inferPskFromConf(conf));
     const ips = ud.preservedAllowedIPs || ud.allowedIps;
     if (!psk || !ips) {
       return res.status(400).json({
@@ -519,12 +667,13 @@ AllowedIPs = ${ips}`;
     const nextConfText = serializeAwgConf(conf.head, nextPeers);
     delete ud.disabled;
     delete ud.disabledAt;
+    delete ud.scheduledTunnelDisconnectAt;
     delete ud.preservedPresharedKey;
     delete ud.preservedAllowedIPs;
     clients[idx] = { ...clients[idx], userData: ud };
-    await dockerWriteFile(AWG_CONF, nextConfText);
-    await dockerWriteFile(CLIENTS_JSON, stringifyClientsTable(clients));
-    await applySyncconf();
+    await rt.dockerWriteFile(rt.confPath, nextConfText);
+    await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
+    await rt.applySyncconf();
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -533,6 +682,7 @@ AllowedIPs = ${ips}`;
 });
 
 app.post("/api/clients/disconnect-date", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   let iso;
@@ -541,18 +691,29 @@ app.post("/api/clients/disconnect-date", requireAuth, async (req, res) => {
   } catch (e) {
     return res.status(400).json({ error: String(e.message || e) });
   }
+  const scheduleTunnelDisconnect = Boolean(req.body?.scheduleTunnelDisconnect);
   try {
-    const { conf, clients, peerByKey } = await loadState();
+    const { clients, peerByKey } = await rt.loadState();
     const idx = clients.findIndex((c) => c.clientId === clientId);
     if (idx === -1) return res.status(404).json({ error: "Client not in clientsTable" });
     const peer = peerByKey.get(clientId);
     const ud = { ...(clients[idx].userData || {}) };
-    ud.lastDisconnectedAt = iso;
-    if (!peer) {
-      ud.disabledAt = iso;
+    if (scheduleTunnelDisconnect) {
+      if (!peer) {
+        return res.status(400).json({
+          error: "Клиент не в туннеле — отложенное отключение недоступно",
+        });
+      }
+      ud.scheduledTunnelDisconnectAt = iso;
+    } else {
+      delete ud.scheduledTunnelDisconnectAt;
+      ud.lastDisconnectedAt = iso;
+      if (!peer) {
+        ud.disabledAt = iso;
+      }
     }
     clients[idx] = { ...clients[idx], userData: ud };
-    await dockerWriteFile(CLIENTS_JSON, stringifyClientsTable(clients));
+    await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -561,6 +722,7 @@ app.post("/api/clients/disconnect-date", requireAuth, async (req, res) => {
 });
 
 app.post("/api/clients/rename", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   const rawName = req.body?.name ?? req.body?.clientName;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -573,12 +735,12 @@ app.post("/api/clients/rename", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Имя не длиннее 200 символов" });
   }
   try {
-    const { clients } = await loadState();
+    const { clients } = await rt.loadState();
     const idx = clients.findIndex((c) => c.clientId === clientId);
     if (idx === -1) return res.status(404).json({ error: "Client not in clientsTable" });
     const ud = { ...(clients[idx].userData || {}), clientName: name };
     clients[idx] = { ...clients[idx], userData: ud };
-    await dockerWriteFile(CLIENTS_JSON, stringifyClientsTable(clients));
+    await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -587,20 +749,21 @@ app.post("/api/clients/rename", requireAuth, async (req, res) => {
 });
 
 app.post("/api/clients/delete", requireAuth, async (req, res) => {
+  const rt = runtimeForRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   try {
-    await backupRemoteFiles();
-    const { conf, clients } = await loadState();
+    await rt.backupRemoteFiles();
+    const { conf, clients } = await rt.loadState();
     const nextPeers = conf.peers.filter((p) => p.publicKey !== clientId);
     const nextClients = clients.filter((c) => c.clientId !== clientId);
     if (nextClients.length === clients.length) {
       return res.status(404).json({ error: "Client not in clientsTable" });
     }
     const nextConfText = serializeAwgConf(conf.head, nextPeers);
-    await dockerWriteFile(AWG_CONF, nextConfText);
-    await dockerWriteFile(CLIENTS_JSON, stringifyClientsTable(nextClients));
-    await applySyncconf();
+    await rt.dockerWriteFile(rt.confPath, nextConfText);
+    await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(nextClients));
+    await rt.applySyncconf();
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -627,5 +790,14 @@ app.use((_req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`amnezia-admin on :${PORT} → docker:${CONTAINER}, data:${DATA_DIR}`);
+  const summary = PROFILES.map((p) => `${p.label}→${p.container}`).join("; ");
+  console.log(`amnezia-admin on :${PORT} · ${summary} · data:${DATA_DIR}`);
 });
+
+setInterval(() => {
+  processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+}, SCHEDULER_MS);
+
+setTimeout(() => {
+  processAllScheduledDisconnects().catch((e) => console.error("scheduleDisconnect:", e));
+}, 4000);
