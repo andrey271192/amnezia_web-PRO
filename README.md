@@ -38,6 +38,9 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `AWG_CONTAINER` | `amnezia-awg2` | Имя контейнера Amnezia WG |
 | `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе |
 | `SCHEDULE_DISCONNECT_MS` | `60000` | Как часто планировщик проверяет отложенное отключение из туннеля (мс) |
+| `DISPLAY_TZ` | _(нет)_ | IANA пояс для строки «Сервер» в UI (например `Asia/Nicosia`), если не хотите полагаться только на `TZ` контейнера |
+| `TIME_SYNC_SSH_HOST` | `172.17.0.1` | Хост для SSH root при синхронизации времени из панели (часто шлюз Docker к хосту) |
+| `TIME_SYNC_DISABLED` | `0` | `1` — скрыть/отключить синхронизацию времени по SSH |
 | `ADMIN_PASSWORD` | _(генерируется)_ | Первый пароль вместо файла |
 | `SKIP_DOWNLOAD` | `0` | `1` — не качать GitHub, собрать из `INSTALL_DIR` |
 | `ALLOW_DEFAULT_PASSWORD` | `0` | `1` — см. раздел «Пароль» ниже |

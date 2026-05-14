@@ -224,6 +224,7 @@ loginForm.addEventListener("submit", async (ev) => {
     loginPassword.value = "";
     showApp();
     await loadProtocols();
+    await loadTimeSyncCaps();
     await loadClients();
   } catch (e) {
     loginError.textContent = String(e.message || e);
@@ -269,6 +270,23 @@ const clockFmt = new Intl.DateTimeFormat("ru-RU", {
   timeStyle: "medium",
 });
 
+/** Часовой пояс строки «Сервер» (IANA), как в /api/server-time */
+let serverDisplayTz = "UTC";
+/** @type {Intl.DateTimeFormat | null} */
+let serverTzFmtCached = null;
+
+function buildServerTzFmt(tz) {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+      timeZone: tz,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** @type {ReturnType<typeof setInterval> | null} */
 let clockTickId = null;
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -276,7 +294,7 @@ let clockServerPollId = null;
 
 /** Метка UTC сервера (мс) по последнему ответу API */
 let serverAnchorUtcMs = /** @type {number | null} */ (null);
-/** Date.now() в момент установки якоря (компенсация сети только между опросами) */
+/** Date.now() в момент установки якоря */
 let serverAnchorWallMs = 0;
 
 function browserTimeZoneLabel() {
@@ -296,8 +314,8 @@ function tickServerClockDisplay() {
   const estimatedUtcMs = serverAnchorUtcMs + (Date.now() - serverAnchorWallMs);
   const d = new Date(estimatedUtcMs);
   clockServerEl.dateTime = d.toISOString();
-  const tz = browserTimeZoneLabel();
-  clockServerEl.textContent = tz ? `${clockFmt.format(d)} · ${tz}` : clockFmt.format(d);
+  const fmt = serverTzFmtCached || clockFmt;
+  clockServerEl.textContent = `${fmt.format(d)} · ${serverDisplayTz}`;
 }
 
 async function refreshServerClock() {
@@ -310,9 +328,13 @@ async function refreshServerClock() {
     }
     serverAnchorUtcMs = parsed;
     serverAnchorWallMs = Date.now();
+    serverDisplayTz =
+      typeof t.timeZone === "string" && t.timeZone.trim() ? t.timeZone.trim() : "UTC";
+    serverTzFmtCached = buildServerTzFmt(serverDisplayTz);
     tickServerClockDisplay();
   } catch {
     serverAnchorUtcMs = null;
+    serverTzFmtCached = null;
     clockServerEl.dateTime = "";
     clockServerEl.textContent = "—";
   }
@@ -341,6 +363,8 @@ function stopClocks() {
   }
   serverAnchorUtcMs = null;
   serverAnchorWallMs = 0;
+  serverTzFmtCached = null;
+  serverDisplayTz = "UTC";
   clockServerEl.dateTime = "";
   clockLocalEl.dateTime = "";
   clockServerEl.textContent = "—";
@@ -354,6 +378,44 @@ function startClocks() {
   clockTickId = setInterval(tickClocks, 1000);
   clockServerPollId = setInterval(() => void refreshServerClock(), 30_000);
 }
+
+async function loadTimeSyncCaps() {
+  const hint = document.querySelector("#sync-host-hint");
+  const btn = document.querySelector("#sync-host-time");
+  try {
+    const c = await api("/api/time-sync-capabilities");
+    if (hint) {
+      hint.textContent = c.hostTimeSync
+        ? `Через SSH на root@${c.sshHost}. Часовой пояс строки «Сервер»: ${c.serverClockTimeZone}. Пароль не сохраняется.`
+        : `Авто-синхронизация по SSH недоступна (или TIME_SYNC_DISABLED). Пояс «Сервер»: ${c.serverClockTimeZone}. Задайте DISPLAY_TZ или TZ для контейнера панели — см. README.`;
+    }
+    if (btn) btn.disabled = !c.hostTimeSync;
+  } catch {
+    if (hint) hint.textContent = "";
+    if (btn) btn.disabled = true;
+  }
+}
+
+document.querySelector("#sync-host-time")?.addEventListener("click", async () => {
+  const inp = document.querySelector("#sync-root-pw");
+  const pw = inp && typeof inp.value === "string" ? inp.value : "";
+  if (!pw.trim()) {
+    setStatus("Введите пароль root на хосте.", true);
+    return;
+  }
+  try {
+    setStatus("Синхронизация времени хоста…", false);
+    await api("/api/sync-host-time", {
+      method: "POST",
+      body: JSON.stringify({ rootPassword: pw, unixMs: Date.now() }),
+    });
+    inp.value = "";
+    setStatus("Запрос выполнен. Проверьте строку «Сервер».", false);
+    void refreshServerClock();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
+});
 
 const dtRu = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "short",
@@ -545,6 +607,7 @@ async function boot() {
   if (ok) {
     showApp();
     await loadProtocols();
+    await loadTimeSyncCaps();
     await loadClients();
   } else {
     showLogin();

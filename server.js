@@ -461,6 +461,68 @@ function requireDisconnectedAt(raw) {
   return d.toISOString();
 }
 
+/** Часовой пояс для строки «Сервер» в UI (IANA). Приоритет: DISPLAY_TZ → TZ процесса Node */
+function resolveServerClockTimeZone() {
+  const override = process.env.DISPLAY_TZ?.trim();
+  if (override) return override;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function sshpassBinaryPath() {
+  for (const p of ["/usr/bin/sshpass", "/usr/local/bin/sshpass"]) {
+    try {
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
+
+function hostTimeSyncConfigured() {
+  if (process.env.TIME_SYNC_DISABLED === "1" || process.env.TIME_SYNC_DISABLED === "true") {
+    return false;
+  }
+  return !!sshpassBinaryPath();
+}
+
+function sshRootRun(password, host, remoteCmd) {
+  const bin = sshpassBinaryPath();
+  if (!bin) {
+    return Promise.reject(new Error("sshpass не установлен"));
+  }
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-p",
+      password,
+      "ssh",
+      "-oBatchMode=yes",
+      "-oStrictHostKeyChecking=no",
+      "-oUserKnownHostsFile=/dev/null",
+      "-oConnectTimeout=15",
+      "-oPreferredAuthentications=password",
+      "-oPubkeyAuthentication=no",
+      `root@${host}`,
+      remoteCmd,
+    ];
+    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(out.trim());
+      else reject(new Error(err.trim() || out.trim() || `ssh код ${code}`));
+    });
+  });
+}
+
 ensureDataDir();
 loadOrCreateSessionSecret();
 bootstrapPassword();
@@ -482,20 +544,65 @@ app.get("/api/session", (req, res) => {
 
 app.get("/api/server-time", requireAuth, (_req, res) => {
   const now = new Date();
-  let timeZone = "UTC";
+  const timeZone = resolveServerClockTimeZone();
+  let formatted;
   try {
-    timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || timeZone;
+    formatted = now.toLocaleString("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+      timeZone,
+    });
   } catch {
-    /* ignore */
+    formatted = now.toLocaleString("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    });
   }
   res.json({
     iso: now.toISOString(),
-    formatted: now.toLocaleString("ru-RU", {
-      dateStyle: "medium",
-      timeStyle: "medium",
-    }),
+    formatted,
     timeZone,
   });
+});
+
+app.get("/api/time-sync-capabilities", requireAuth, (_req, res) => {
+  res.json({
+    hostTimeSync: hostTimeSyncConfigured(),
+    sshHost: process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1",
+    serverClockTimeZone: resolveServerClockTimeZone(),
+  });
+});
+
+app.post("/api/sync-host-time", requireAuth, async (req, res) => {
+  if (!hostTimeSyncConfigured()) {
+    return res.status(503).json({
+      error:
+        "Синхронизация времени хоста недоступна (нет sshpass или TIME_SYNC_DISABLED=1).",
+    });
+  }
+  const pw = req.body?.rootPassword;
+  const unixMsRaw = req.body?.unixMs;
+  const unixMs =
+    typeof unixMsRaw === "number" && Number.isFinite(unixMsRaw) ? unixMsRaw : Date.now();
+  if (typeof pw !== "string" || !pw) {
+    return res.status(400).json({ error: "Укажите пароль root VPS" });
+  }
+  const unixSec = Math.floor(unixMs / 1000);
+  if (!Number.isFinite(unixSec)) {
+    return res.status(400).json({ error: "Некорректное время" });
+  }
+  const host = process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1";
+  const remoteCmd = `bash -lc 'date -u --set=@${unixSec} 2>/dev/null || date -s @${unixSec}; (command -v hwclock >/dev/null && hwclock -w --utc) || true; date -u +%Y-%m-%dT%H:%M:%SZ'`;
+  try {
+    const confirmed = await sshRootRun(pw, host, remoteCmd);
+    res.json({ ok: true, utc: confirmed });
+  } catch {
+    console.warn("sync-host-time: ssh не выполнен");
+    res.status(400).json({
+      error:
+        "Не удалось выставить время по SSH. Проверьте пароль root, вход root по паролю на хосте и переменную TIME_SYNC_SSH_HOST (часто 172.17.0.1 с контейнера).",
+    });
+  }
 });
 
 app.post("/api/login", (req, res) => {

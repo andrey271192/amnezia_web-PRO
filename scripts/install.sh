@@ -101,6 +101,18 @@ if [[ -n "${AWG_PROFILES:-}" ]]; then
   RUN_ENV+=( -e "AWG_PROFILES=${AWG_PROFILES}" )
 fi
 
+if [[ -n "${DISPLAY_TZ:-}" ]]; then
+  RUN_ENV+=( -e "DISPLAY_TZ=${DISPLAY_TZ}" )
+fi
+
+if [[ -n "${TIME_SYNC_SSH_HOST:-}" ]]; then
+  RUN_ENV+=( -e "TIME_SYNC_SSH_HOST=${TIME_SYNC_SSH_HOST}" )
+fi
+
+if [[ -n "${TIME_SYNC_DISABLED:-}" ]]; then
+  RUN_ENV+=( -e "TIME_SYNC_DISABLED=${TIME_SYNC_DISABLED}" )
+fi
+
 if [[ -n "${BOOT_PW}" ]]; then
   RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
 elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then

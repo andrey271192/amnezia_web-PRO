@@ -268,6 +268,43 @@ h1 {
   align-self: flex-start;
 }
 
+.clock-host-sync {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  max-width: 26rem;
+}
+
+.clock-host-sync summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  color: var(--accent, #38bdf8);
+}
+
+.clock-sync-hint {
+  margin: 0.45rem 0 0.5rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.clock-sync-input {
+  display: block;
+  width: 100%;
+  max-width: 22rem;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0a0f16;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.clock-sync-submit {
+  margin-top: 0.45rem;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

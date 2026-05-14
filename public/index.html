@@ -67,11 +67,20 @@
           <time id="clock-local" class="clock-time">—</time>
         </div>
         <p class="clock-hint muted">
-          Сервер показывается в вашем часовом поясе (как браузер). «Сверить» — заново запросить момент с VPS.
+          «Сервер» — время в часовом поясе VPS (подпись справа). «Браузер» — ваш компьютер. «Сверить» — заново запросить момент с сервера.
         </p>
         <button type="button" id="clock-sync" class="btn small ghost clock-sync-btn">
           Сверить время
         </button>
+        <details class="clock-host-sync">
+          <summary>Синхронизировать часы VPS с этим компьютером</summary>
+          <p id="sync-host-hint" class="muted clock-sync-hint"></p>
+          <label for="sync-root-pw">Пароль root на хосте (не сохраняется)</label>
+          <input id="sync-root-pw" type="password" autocomplete="off" class="clock-sync-input">
+          <button type="button" id="sync-host-time" class="btn small primary clock-sync-submit">
+            Выставить время хоста как у браузера
+          </button>
+        </details>
       </div>
       <button type="button" id="refresh" class="btn primary">Обновить</button>
     </section>

@@ -1,6 +1,6 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli openssh-client sshpass
 
 RUN mkdir -p /data && chmod 700 /data
 
