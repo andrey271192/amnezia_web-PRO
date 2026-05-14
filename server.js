@@ -968,6 +968,117 @@ PersistentKeepalive = ${keepAlive}
 `;
 }
 
+function assertCascadeEndpointHost(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s || s.length > 253) {
+    throw new Error("Укажите IP или DNS для Endpoint (куда клиент будет стучаться в каскаде).");
+  }
+  if (/[\s<>\"']/.test(s)) {
+    throw new Error("Недопустимые символы в Endpoint.");
+  }
+  return s;
+}
+
+function parseIpv4ToParts(ip) {
+  const m = String(ip).trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return null;
+  const o = [1, 2, 3, 4].map((i) => parseInt(m[i], 10));
+  if (o.some((x) => x > 255 || Number.isNaN(x))) return null;
+  return o;
+}
+
+async function awgGenKeypair(rt) {
+  const privOut = await rt.dockerExec(`${rt.profile.wgBinary} genkey`);
+  const priv = privOut.trim().split(/\s+/)[0];
+  if (!priv || !/^[A-Za-z0-9+/=_-]+$/.test(priv)) {
+    throw new Error("Не удалось сгенерировать ключ клиента (genkey).");
+  }
+  const q = priv.replace(/'/g, `'\\''`);
+  const pubOut = await rt.dockerExec(`printf '%s\\n' '${q}' | ${rt.profile.wgBinary} pubkey`);
+  const pub = pubOut.trim().split(/\s+/)[0];
+  if (!pub) throw new Error("Не удалось получить публичный ключ клиента.");
+  return { priv, pub };
+}
+
+function obfuscationFieldsFromServerHead(ifaceMap) {
+  const keys = ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4", "I1", "I2", "I3", "I4", "I5"];
+  const out = {};
+  for (const k of keys) {
+    const v = ifaceMap[k];
+    if (v != null && String(v).trim() !== "") {
+      out[k] = String(v).trim();
+    }
+  }
+  return out;
+}
+
+function collectUsedTunnelIps(conf) {
+  const used = new Set();
+  for (const p of conf.peers) {
+    const raw = p.allowedIPs || "";
+    const re = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:\/\d+)?/g;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      used.add(m[1]);
+    }
+  }
+  return used;
+}
+
+function inferSubnetPrefixFromConf(conf, ifaceMap) {
+  const addrRaw = ifaceMap.Address || ifaceMap.address;
+  if (addrRaw) {
+    const chunk = String(addrRaw).split(",")[0].trim();
+    const parts = parseIpv4ToParts(chunk.split("/")[0]);
+    if (parts) {
+      return `${parts[0]}.${parts[1]}.${parts[2]}`;
+    }
+  }
+  for (const p of conf.peers) {
+    const m = String(p.allowedIPs || "").match(/(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/);
+    if (m) return m[1];
+  }
+  return "10.8.1";
+}
+
+function suggestNextTunnelIp(conf, ifaceMap) {
+  const prefix = inferSubnetPrefixFromConf(conf, ifaceMap);
+  const used = collectUsedTunnelIps(conf);
+  let maxLast = 1;
+  for (const ip of used) {
+    if (!ip.startsWith(`${prefix}.`)) continue;
+    const last = parseInt(ip.slice(prefix.length + 1), 10);
+    if (!Number.isNaN(last)) maxLast = Math.max(maxLast, last);
+  }
+  for (let last = Math.max(2, maxLast + 1); last <= 254; last++) {
+    const candidate = `${prefix}.${last}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  throw new Error("Не нашёл свободный IPv4 в подсети VPN для нового клиента.");
+}
+
+function normalizeCascadeTunnelIp(conf, ifaceMap, requested) {
+  const prefix = inferSubnetPrefixFromConf(conf, ifaceMap);
+  if (!requested || !String(requested).trim()) {
+    return suggestNextTunnelIp(conf, ifaceMap);
+  }
+  const stripped = String(requested).trim().replace(/\/32$/i, "");
+  const parts = parseIpv4ToParts(stripped);
+  if (!parts) {
+    throw new Error("Некорректный IP туннеля (ожидается IPv4, например 10.8.1.10).");
+  }
+  const triple = `${parts[0]}.${parts[1]}.${parts[2]}`;
+  if (triple !== prefix) {
+    throw new Error(`IP клиента должен быть в подсети ${prefix}.x как у остальных клиентов этого инстанса.`);
+  }
+  const full = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]}`;
+  const used = collectUsedTunnelIps(conf);
+  if (used.has(full)) {
+    throw new Error(`Адрес ${full} уже занят другим клиентом.`);
+  }
+  return full;
+}
+
 async function disableClient(rt, clientId, ts) {
   await rt.backupRemoteFiles();
   const { conf, clients } = await rt.loadState();
@@ -1298,6 +1409,11 @@ app.get("/api/protocols", requireAuth, (req, res) => {
       label: p.label,
       container: p.container,
     })),
+    singleProfile: PROFILES.length < 2,
+    profilesPersistHint:
+      PROFILES.length < 2
+        ? "Сейчас один инстанс: при установке не передали AWG_PROFILES или не восстановился снимок. Задайте JSON профилей и запустите install.sh — он сохранится в /root/amnezia-admin.awg-profiles.json."
+        : "",
   });
 });
 
@@ -1452,6 +1568,123 @@ app.get("/api/clients/export-config", requireAuthOrExportToken, (req, res) => {
 
 app.post("/api/clients/export-config", requireAuth, (req, res) => {
   void serveClientConfigExport(req, res);
+});
+
+/**
+ * Новый клиент для каскада: генерирует ключи, добавляет peer на сервер, сохраняет last_config,
+ * отдаёт .conf с Endpoint = endpointHost:endpointPort (ваш промежуточный узел).
+ */
+app.post("/api/clients/create-cascade", requireAuth, async (req, res) => {
+  const rt = runtimeFromExportRequest(req);
+  let endpointHost;
+  try {
+    endpointHost = assertCascadeEndpointHost(req.body?.endpointHost);
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) });
+    return;
+  }
+  let endpointPort;
+  const rawPort = req.body?.endpointPort;
+  if (rawPort != null && rawPort !== "") {
+    endpointPort = Number(rawPort);
+    if (!Number.isFinite(endpointPort) || endpointPort < 1 || endpointPort > 65535) {
+      res.status(400).json({ error: "Некорректный порт Endpoint (1–65535)." });
+      return;
+    }
+  }
+  try {
+    await rt.backupRemoteFiles();
+    const { conf, clients } = await rt.loadState();
+    const ifaceMap = parseInterfaceKeyValues(conf.head);
+    if (!ifaceMap.PrivateKey) {
+      res.status(400).json({ error: "В wg/awg конфиге сервера нет PrivateKey в [Interface]." });
+      return;
+    }
+
+    const tunnelIp = normalizeCascadeTunnelIp(conf, ifaceMap, req.body?.tunnelIp);
+    const listenPort = ifaceMap.ListenPort ? Number(ifaceMap.ListenPort) : NaN;
+    if (endpointPort == null) {
+      endpointPort =
+        Number.isFinite(listenPort) && listenPort > 0
+          ? listenPort
+          : rt.profile.wgBinary === "awg"
+            ? 55424
+            : 51820;
+    }
+
+    const psk = await rt.inferPskFromConf(conf);
+    if (!psk || typeof psk !== "string") {
+      res.status(400).json({ error: "Не удалось определить PresharedKey (нет peer или файла psk)." });
+      return;
+    }
+
+    const serverPub = await wgPubkeyFromPrivate(rt, ifaceMap.PrivateKey);
+    const { priv, pub } = await awgGenKeypair(rt);
+    if (clients.some((c) => c.clientId === pub)) {
+      res.status(409).json({ error: "Коллизия ключей — попробуйте ещё раз." });
+      return;
+    }
+
+    const obf = obfuscationFieldsFromServerHead(ifaceMap);
+    const lc = {
+      client_priv_key: priv,
+      server_pub_key: serverPub,
+      psk_key: psk,
+      client_ip: tunnelIp,
+      hostName: endpointHost,
+      port: endpointPort,
+      allowed_ips: ["0.0.0.0/0", "::/0"],
+      ...obf,
+    };
+
+    const peerRaw = `[Peer]
+PublicKey = ${pub}
+PresharedKey = ${psk}
+AllowedIPs = ${tunnelIp}/32
+`;
+    const peer = parsePeerBlock(`${peerRaw}\n`);
+    const nextPeers = [...conf.peers, peer];
+    const nextConfText = serializeAwgConf(conf.head, nextPeers);
+
+    const rawName = req.body?.clientName;
+    const clientName =
+      typeof rawName === "string" && rawName.trim()
+        ? rawName.trim().replace(/\s+/g, " ").slice(0, 200)
+        : `Каскад ${tunnelIp}`;
+
+    const last_config = JSON.stringify(lc);
+    const newRow = {
+      clientId: pub,
+      userData: {
+        clientName,
+        creationDate: new Date().toISOString(),
+        last_config,
+        allowedIps: `${tunnelIp}/32`,
+      },
+    };
+    const nextClients = [...clients, newRow];
+
+    await rt.dockerWriteFile(rt.confPath, nextConfText);
+    await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(nextClients));
+    await rt.applySyncconf();
+
+    const confAfter = { ...conf, peers: nextPeers };
+    let text;
+    try {
+      text = await buildClientConfExport(rt, lc, ifaceMap, req, newRow, confAfter);
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+      return;
+    }
+
+    const baseName = safeExportFilenamePart(clientName, pub.slice(0, 12));
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="amnezia-cascade-${baseName}.conf"`);
+    res.send(text);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.post("/api/warp/start", requireAuth, async (req, res) => {

@@ -31,6 +31,8 @@ const pwNew = document.querySelector("#pw-new");
 const pwNew2 = document.querySelector("#pw-new2");
 const pwMsg = document.querySelector("#pw-msg");
 
+const profileHintEl = document.querySelector("#profile-hint");
+
 const dtDialog = document.querySelector("#disconnect-dt-dialog");
 const dtTitle = document.querySelector("#dt-dialog-title");
 const dtClientEl = document.querySelector("#dt-dialog-client");
@@ -202,6 +204,15 @@ async function loadProtocols() {
   try {
     const data = await api("/api/protocols");
     protoLabel.textContent = `Протокол: ${data.currentLabel || "AmneziaWG"}`;
+    if (profileHintEl) {
+      if (data.singleProfile && typeof data.profilesPersistHint === "string" && data.profilesPersistHint) {
+        profileHintEl.textContent = data.profilesPersistHint;
+        profileHintEl.classList.remove("hidden");
+      } else {
+        profileHintEl.textContent = "";
+        profileHintEl.classList.add("hidden");
+      }
+    }
     if (!data.profiles || data.profiles.length < 2) {
       protoSwitch.classList.add("hidden");
       return;
@@ -251,6 +262,11 @@ logoutBtn.addEventListener("click", async () => {
 refreshBtn.addEventListener("click", () => {
   loadClients();
 });
+
+const cascadeForm = document.querySelector("#cascade-form");
+if (cascadeForm) {
+  cascadeForm.addEventListener("submit", (ev) => void downloadCascadeConf(ev));
+}
 
 protoSelect.addEventListener("change", async () => {
   try {
@@ -516,7 +532,7 @@ function renderRows(clients) {
       const exHint = document.createElement("p");
       exHint.className = "muted export-missing-hint";
       exHint.textContent =
-        "Экспорт .conf с сервера недоступен: нет userData.last_config (ключи только в приложении Amnezia).";
+        "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
       nameWrap.appendChild(exHint);
     }
     nameTd.appendChild(nameWrap);
@@ -728,10 +744,14 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function currentProfileIdValue() {
+  if (!protoSelect || !protoSwitch || protoSwitch.classList.contains("hidden")) return "";
+  return String(protoSelect.value || "").trim();
+}
+
 /** Query для нужного инстанса при нескольких профилях AWG_PROFILES */
 function currentProfileQuerySuffix() {
-  if (!protoSelect || !protoSwitch || protoSwitch.classList.contains("hidden")) return "";
-  const pid = String(protoSelect.value || "").trim();
+  const pid = currentProfileIdValue();
   return pid ? `&profileId=${encodeURIComponent(pid)}` : "";
 }
 
@@ -794,6 +814,72 @@ async function downloadClientConfig(c) {
     a.remove();
     URL.revokeObjectURL(url);
     setStatus("Конфиг скачан.", false);
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
+}
+
+async function downloadCascadeConf(ev) {
+  ev.preventDefault();
+  const endpointEl = document.querySelector("#cascade-endpoint");
+  const portEl = document.querySelector("#cascade-port");
+  const tunnelEl = document.querySelector("#cascade-tunnel-ip");
+  const nameEl = document.querySelector("#cascade-name");
+  const endpointHost = endpointEl?.value.trim() || "";
+  if (!endpointHost) {
+    setStatus("Укажите Endpoint (IP или DNS для клиента в каскаде).", true);
+    return;
+  }
+  const body = { endpointHost };
+  const praw = portEl?.value.trim() ?? "";
+  if (praw) {
+    const n = Number(praw);
+    if (!Number.isFinite(n) || n < 1 || n > 65535) {
+      setStatus("Некорректный порт Endpoint (1–65535).", true);
+      return;
+    }
+    body.endpointPort = n;
+  }
+  const tip = tunnelEl?.value.trim();
+  if (tip) body.tunnelIp = tip;
+  const nm = nameEl?.value.trim();
+  if (nm) body.clientName = nm;
+  const pid = currentProfileIdValue();
+  if (pid) body.profileId = pid;
+  try {
+    setStatus("Создаю клиента на сервере и собираю .conf…", false);
+    const res = await fetch("/api/clients/create-cascade", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = typeof j.error === "string" ? j.error : msg;
+      } catch {
+        /* raw */
+      }
+      throw new Error(msg);
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (nm || "cascade")
+      .replace(/[^\w\u0400-\u04FF\-]+/g, "_")
+      .slice(0, 60);
+    a.href = url;
+    a.download = `amnezia-cascade-${safe}.conf`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Клиент добавлен на сервер, .conf скачан. Обновите таблицу.", false);
+    await loadClients();
   } catch (e) {
     setStatus(String(e.message || e), true);
   }

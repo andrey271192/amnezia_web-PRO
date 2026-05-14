@@ -528,6 +528,35 @@ tr:last-child td {
   max-width: 22rem;
 }
 
+.profile-hint {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.07);
+  max-width: 52rem;
+}
+
+.cascade-intro code.inline {
+  font-size: 0.85em;
+}
+
+.cascade-form {
+  display: grid;
+  gap: 0.55rem;
+  max-width: 28rem;
+  margin-top: 0.85rem;
+}
+
+.cascade-form label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.cascade-form input {
+  width: 100%;
+}
+
 .raw {
   margin-top: 1.25rem;
   color: var(--muted);

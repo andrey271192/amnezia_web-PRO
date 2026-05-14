@@ -86,6 +86,8 @@
       <button type="button" id="refresh" class="btn primary">Обновить</button>
     </section>
 
+    <p id="profile-hint" class="profile-hint muted hidden" role="note"></p>
+
     <p id="status" class="status" role="status"></p>
 
     <section class="panel warp-panel" id="warp-panel" hidden>
@@ -104,6 +106,32 @@
         <summary>Вывод wg show warp</summary>
         <pre id="warp-wg-show"></pre>
       </details>
+    </section>
+
+    <section class="panel cascade-panel" id="cascade-panel">
+      <div class="panel-head">
+        <h2>Новый клиент под каскад</h2>
+      </div>
+      <p class="muted cascade-intro">
+        Укажите <strong>Endpoint</strong> — публичный IP или DNS узла, <em>куда клиент будет подключаться первым шагом</em>
+        (промежуточный сервер, домашний роутер с пробросом порта и т.д.). Порт по умолчанию совпадает с <code class="inline">ListenPort</code> этого инстанса.
+        Клиент будет <strong>создан на текущем сервере AmneziaWG</strong> (новые ключи); IP в туннеле можно задать явно или оставить пустым — подберём свободный в той же подсети, что у остальных.
+      </p>
+      <form id="cascade-form" class="cascade-form">
+        <label for="cascade-endpoint">Endpoint (хост для клиента)</label>
+        <input id="cascade-endpoint" type="text" placeholder="Например 203.0.113.50 или ddns.example.com" required autocomplete="off">
+
+        <label for="cascade-port">Порт Endpoint</label>
+        <input id="cascade-port" type="number" min="1" max="65535" placeholder="Пусто — как у сервера" autocomplete="off">
+
+        <label for="cascade-tunnel-ip">IP в VPN-туннеле (необязательно)</label>
+        <input id="cascade-tunnel-ip" type="text" placeholder="Например 10.8.1.20 — та же подсеть /24 что у других" autocomplete="off">
+
+        <label for="cascade-name">Имя в таблице</label>
+        <input id="cascade-name" type="text" placeholder="Например Телефон через узел X" autocomplete="off">
+
+        <button type="submit" class="btn primary">Создать на сервере и скачать .conf</button>
+      </form>
     </section>
 
     <section class="panel">
