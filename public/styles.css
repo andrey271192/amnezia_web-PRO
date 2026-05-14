@@ -234,6 +234,18 @@ h1 {
   color: var(--text);
 }
 
+.clock-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  max-width: 22rem;
+}
+
+.clock-sync-btn {
+  margin-top: 0.35rem;
+  align-self: flex-start;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

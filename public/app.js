@@ -8,6 +8,7 @@ const logoutBtn = document.querySelector("#logout");
 const refreshBtn = document.querySelector("#refresh");
 const clockServerEl = document.querySelector("#clock-server");
 const clockLocalEl = document.querySelector("#clock-local");
+const clockSyncBtn = document.querySelector("#clock-sync");
 const rowsEl = document.querySelector("#rows");
 const statusEl = document.querySelector("#status");
 const peerCountEl = document.querySelector("#peer-count");
@@ -216,6 +217,10 @@ refreshBtn.addEventListener("click", () => {
   loadClients();
 });
 
+clockSyncBtn.addEventListener("click", () => {
+  void refreshServerClock();
+});
+
 const clockFmt = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "medium",
   timeStyle: "medium",
@@ -226,16 +231,45 @@ let clockTickId = null;
 /** @type {ReturnType<typeof setInterval> | null} */
 let clockServerPollId = null;
 
+/** Метка UTC сервера (мс) по последнему ответу API */
+let serverAnchorUtcMs = /** @type {number | null} */ (null);
+/** Date.now() в момент установки якоря (компенсация сети только между опросами) */
+let serverAnchorWallMs = 0;
+
+function browserTimeZoneLabel() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
+
+function tickServerClockDisplay() {
+  if (serverAnchorUtcMs === null) {
+    clockServerEl.dateTime = "";
+    clockServerEl.textContent = "—";
+    return;
+  }
+  const estimatedUtcMs = serverAnchorUtcMs + (Date.now() - serverAnchorWallMs);
+  const d = new Date(estimatedUtcMs);
+  clockServerEl.dateTime = d.toISOString();
+  const tz = browserTimeZoneLabel();
+  clockServerEl.textContent = tz ? `${clockFmt.format(d)} · ${tz}` : clockFmt.format(d);
+}
+
 async function refreshServerClock() {
   try {
     const t = await api("/api/server-time");
     const iso = typeof t.iso === "string" ? t.iso : "";
-    clockServerEl.dateTime = iso;
-    const tz = typeof t.timeZone === "string" ? t.timeZone : "";
-    const formatted = typeof t.formatted === "string" ? t.formatted : "";
-    clockServerEl.textContent =
-      formatted.trim() ? `${formatted}${tz ? ` · ${tz}` : ""}` : "—";
+    const parsed = new Date(iso).getTime();
+    if (!iso || Number.isNaN(parsed)) {
+      throw new Error("нет времени");
+    }
+    serverAnchorUtcMs = parsed;
+    serverAnchorWallMs = Date.now();
+    tickServerClockDisplay();
   } catch {
+    serverAnchorUtcMs = null;
     clockServerEl.dateTime = "";
     clockServerEl.textContent = "—";
   }
@@ -244,7 +278,13 @@ async function refreshServerClock() {
 function tickLocalClock() {
   const n = new Date();
   clockLocalEl.dateTime = n.toISOString();
-  clockLocalEl.textContent = clockFmt.format(n);
+  const tz = browserTimeZoneLabel();
+  clockLocalEl.textContent = tz ? `${clockFmt.format(n)} · ${tz}` : clockFmt.format(n);
+}
+
+function tickClocks() {
+  tickLocalClock();
+  tickServerClockDisplay();
 }
 
 function stopClocks() {
@@ -256,6 +296,8 @@ function stopClocks() {
     clearInterval(clockServerPollId);
     clockServerPollId = null;
   }
+  serverAnchorUtcMs = null;
+  serverAnchorWallMs = 0;
   clockServerEl.dateTime = "";
   clockLocalEl.dateTime = "";
   clockServerEl.textContent = "—";
@@ -264,9 +306,9 @@ function stopClocks() {
 
 function startClocks() {
   stopClocks();
-  tickLocalClock();
+  tickClocks();
   void refreshServerClock();
-  clockTickId = setInterval(tickLocalClock, 1000);
+  clockTickId = setInterval(tickClocks, 1000);
   clockServerPollId = setInterval(() => void refreshServerClock(), 30_000);
 }
 
