@@ -1700,7 +1700,7 @@ app.post("/api/warp/start", requireAuth, async (req, res) => {
   if (!(await warpFileExists(rt, rt.profile.warpConf))) {
     return res.status(400).json({
       error:
-        "WARP не установлен (нет warp.conf). Один раз выполните на хосте: scripts/warp-amnezia.sh install — см. README.",
+        "WARP не установлен (нет warp.conf). На хосте: scripts/warp-amnezia.sh install — или игнорируйте раздел, если WARP не нужен (см. README).",
     });
   }
   try {
@@ -1732,7 +1732,7 @@ app.post("/api/warp/routing", requireAuth, async (req, res) => {
   if (!(await warpFileExists(rt, rt.profile.warpConf))) {
     return res.status(400).json({
       error:
-        "WARP не установлен. Сначала scripts/warp-amnezia.sh install на хосте VPS (root).",
+        "WARP не установлен. Сначала scripts/warp-amnezia.sh install на хосте VPS (root), либо не используйте этот раздел.",
     });
   }
   const raw = req.body?.selectedAllowedIps;

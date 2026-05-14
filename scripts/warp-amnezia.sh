@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cloudflare WARP внутри контейнера AmneziaWG (wgcf → warp.conf → wg-quick).
 # Запускать на хосте VPS от root: установка и обслуживание туннеля WARP для панели Amnezia Admin.
-# После install управление «кто выходит через WARP» — в веб-панели Amnezia Admin (раздел WARP).
+# После install управление «кто выходит через WARP» — в веб-панели (раздел WARP). Полное снятие: подкоманда uninstall.
 set -euo pipefail
 
 WGCF_VERSION="${WGCF_VERSION:-2.2.30}"
@@ -10,8 +10,8 @@ WGCF_ACCOUNT="${WGCF_ACCOUNT:-/root/wgcf-account.toml}"
 WGCF_PROFILE="${WGCF_PROFILE:-/root/wgcf-profile.conf}"
 
 usage() {
-  echo "Использование: $0 {install|start|stop|status|rekey} [имя_контейнера]"
-  echo "Переменные: AWG_CONTAINER, WARP_DIR (по умолчанию /opt/warp)"
+  echo "Использование: $0 {install|start|stop|status|rekey|uninstall} [имя_контейнера]"
+  echo "Переменные: AWG_CONTAINER, WARP_DIR (по умолчанию /opt/warp), AMNEZIA_START_SCRIPT (для uninstall, по умолчанию /opt/amnezia/start.sh)"
   exit 1
 }
 
@@ -152,6 +152,33 @@ is_running() {
   docker exec "$CONTAINER" ip addr show warp >/dev/null 2>&1
 }
 
+cmd_uninstall() {
+  echo "→ Останавливаю WARP и убираю автозапуск в контейнере ${CONTAINER}…"
+  warp_down || true
+  local START_SCRIPT="${AMNEZIA_START_SCRIPT:-/opt/amnezia/start.sh}"
+  docker exec \
+    -e START_SCRIPT="$START_SCRIPT" \
+    -e WARP_CONF="$AWG_WARP_CONF" \
+    -e WARP_DIR="$AWG_WARP_DIR" \
+    "$CONTAINER" sh -c '
+set +e
+ip rule | awk "/lookup 100/ {print \$1}" | sed "s/://g" | sort -rn | while read -r pr; do ip rule del priority "$pr" 2>/dev/null || true; done
+iptables -t nat -S POSTROUTING 2>/dev/null | grep -- "-o warp -j MASQUERADE" | while read -r line; do
+  rule=$(echo "$line" | sed "s/^-A /-D /")
+  iptables -t nat $rule 2>/dev/null || true
+done
+ip route flush table 100 2>/dev/null || true
+if [ -f "$START_SCRIPT" ] && grep -qF "# --- WARP-MANAGER BEGIN ---" "$START_SCRIPT" 2>/dev/null; then
+  sed -i "/# --- WARP-MANAGER BEGIN ---/,/# --- WARP-MANAGER END ---/d" "$START_SCRIPT"
+fi
+rm -f "$WARP_CONF" "${WARP_DIR}/clients.list" "${WARP_DIR}/wgcf-profile.conf" 2>/dev/null || true
+'
+  echo "→ Перезапускаю контейнер ${CONTAINER}…"
+  docker restart "$CONTAINER" >/dev/null
+  echo "Готово: WARP отключён, файлы в контейнере и блок в start.sh убраны."
+  echo "Учёт wgcf на хосте при желании удалите вручную: $WGCF_ACCOUNT $WGCF_PROFILE (и $WGCF_BIN, если не нужен)."
+}
+
 cmd_install() {
   echo "Бэкап конфигов в контейнере…"
   docker exec "$CONTAINER" sh -c "
@@ -246,6 +273,7 @@ case "$CMD" in
     warp_down
     echo "WARP остановлен."
     ;;
+  uninstall) cmd_uninstall ;;
   status) cmd_status ;;
   rekey) cmd_rekey ;;
   *) usage ;;

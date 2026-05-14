@@ -96,9 +96,10 @@
         <span class="muted" id="warp-status-line"></span>
       </div>
       <p class="muted warp-intro">
-        Выход в интернет через Cloudflare WARP для выбранных клиентов AmneziaWG (правила в контейнере: таблица маршрутизации и NAT).
+        <strong>Необязательно.</strong> Если достаточно обычного AmneziaWG без выхода части клиентов через Cloudflare — раздел можно не трогать (статус «Не установлен» — норма).
+        Если WARP нужен: выход в интернет через Cloudflare для <em>выбранных</em> клиентов (правила маршрутизации и NAT в контейнере).
         Один раз на хосте VPS под root: в каталоге с репозиторием выполните <code class="inline">bash scripts/warp-amnezia.sh install</code>.
-        Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится).
+        Затем отметьте клиентов ниже и нажмите «Применить» (контейнер AWG перезапустится). Убрать WARP полностью: <code class="inline">bash scripts/warp-amnezia.sh uninstall</code> — см. README.
       </p>
       <div id="warp-actions" class="warp-actions"></div>
       <div id="warp-client-list" class="warp-client-list"></div>

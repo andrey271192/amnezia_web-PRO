@@ -634,6 +634,11 @@ function renderWarpPanel(data) {
     hint.innerHTML =
       "Один раз на хосте (root): <code class=\"inline\">bash scripts/warp-amnezia.sh install</code> — из каталога клона репозитория на VPS. Если контейнер не угадан автоматически: <code class=\"inline\">bash scripts/warp-amnezia.sh install amnezia-awg2</code>.";
     warpActionsEl.appendChild(hint);
+    const skip = document.createElement("p");
+    skip.className = "muted warp-muted";
+    skip.textContent =
+      "Если Cloudflare WARP не нужен, ничего не выполняйте — AmneziaWG и панель работают без него. Полное удаление: bash scripts/warp-amnezia.sh uninstall (см. README).";
+    warpActionsEl.appendChild(skip);
     return;
   }
 
