@@ -29,7 +29,7 @@
 <img src="docs/screenshots/panel-overview-password.png" alt="Панель: заголовок, подсказки по расписанию и нескольким инстансам, форма смены пароля" width="780"/>
 </p>
 
-Файлы: `docs/screenshots/panel-users-table.png`, `docs/screenshots/panel-overview-password.png` — при желании замените их своими скриншотами с теми же именами.
+Те же иллюстрации подходят и для связки установки через **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (контент панели тот же). Файлы: `docs/screenshots/panel-users-table.png`, `docs/screenshots/panel-overview-password.png` — замените на свои живые PNG при необходимости.
 
 ---
 
