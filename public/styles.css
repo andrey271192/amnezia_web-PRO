@@ -26,6 +26,59 @@ body.page {
   flex-direction: column;
 }
 
+.panel-promo-strip {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.28);
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.96));
+  backdrop-filter: blur(8px);
+}
+
+.panel-promo-strip-inner {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  max-width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 0.55rem clamp(1rem, 3vw, 1.5rem);
+}
+
+.panel-promo-subtitle {
+  margin: 0;
+  flex: 1 1 16rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.panel-promo-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+}
+
+.panel-promo-a {
+  font-weight: 650;
+  font-size: 0.86rem;
+  color: #fde68a;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.panel-promo-a:hover {
+  text-decoration: underline;
+}
+
+.panel-promo-sep {
+  color: var(--muted);
+  font-weight: 700;
+  user-select: none;
+}
+
 .shell {
   flex: 1 0 auto;
   max-width: min(1120px, 100%);
@@ -142,6 +195,27 @@ h1 {
   color: var(--text);
   font: inherit;
   margin-bottom: 0.75rem;
+}
+
+.gate-donate {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.45);
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.gate-donate a {
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.gate-donate-dot {
+  display: inline-block;
+  opacity: 0.45;
+  margin: 0 0.2rem;
+  user-select: none;
 }
 
 .btn.full {

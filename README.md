@@ -1,5 +1,16 @@
 # amnezia_web-PRO
 
+> Где поддержать: [Boosty (донат)](https://boosty.to/andrey27/donate) · [Ozon СБП](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) · [Telegram @lot_andrey](https://t.me/lot_andrey) · [**GitHub** ↗](https://github.com/andrey271192/amnezia_web-PRO)
+
+## Поддержка проекта
+
+---
+
+- ⭐ **GitHub:** [andrey271192/amnezia_web-PRO](https://github.com/andrey271192/amnezia_web-PRO)
+- 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
+- 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
+- ✉️ **Telegram:** [@lot_andrey](https://t.me/lot_andrey)
+
 Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения; при нескольких контейнерах — переключатель **«Инстанс»** (`AWG_PROFILES`); **экспорт .conf** при наличии `last_config`; **новый клиент под каскад** (свой Endpoint и ключи на сервере); **Telegram MTProto‑прокси** (отдельный контейнер `telegrammessenger/proxy`, управление из панели). **Cloudflare WARP** — *необязательное* дополнение: часть клиентов может выходить в интернет через интерфейс `warp` внутри контейнера AWG (ставится отдельно скриптом на хосте). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
 
 Справочник по интерфейсу, типичным сбоям и HTTP API: **[docs/panel-guide.md](docs/panel-guide.md)**.

@@ -7,9 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=1.2.28">
 </head>
 <body class="page">
+  <aside class="panel-promo-strip" role="complementary" aria-label="Поддержка и донат">
+    <div class="panel-promo-strip-inner">
+      <p class="panel-promo-subtitle muted">Поддержите проект через Boosty, Ozon СБП и Telegram — ниже те же ссылки в подвале.</p>
+      <div class="panel-promo-links">
+        <a class="panel-promo-a" href="https://github.com/andrey271192/amnezia_web-PRO" target="_blank" rel="noopener noreferrer">⭐ GitHub · PRO</a>
+        <span class="panel-promo-sep" aria-hidden="true">·</span>
+        <a class="panel-promo-a" href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener noreferrer">💖 Boosty</a>
+        <span class="panel-promo-sep" aria-hidden="true">·</span>
+        <a class="panel-promo-a" href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener noreferrer">💳 Ozon&nbsp;СБП</a>
+        <span class="panel-promo-sep" aria-hidden="true">·</span>
+        <a class="panel-promo-a" href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">✉️ Telegram&nbsp;@lot_andrey</a>
+      </div>
+    </div>
+  </aside>
+
   <div id="login-gate" class="gate hidden" aria-hidden="true">
     <div class="gate-card">
       <p class="eyebrow">Панель сервера</p>
@@ -21,6 +36,16 @@
         <button type="submit" class="btn primary full">Войти</button>
         <p id="login-error" class="status err" role="alert"></p>
       </form>
+      <nav class="gate-donate muted" aria-label="Поддержка и донат">
+        Поддержка веб‑панелей (вне этого сервера):<br/>
+        <a href="https://github.com/andrey271192/amnezia_web-PRO" target="_blank" rel="noopener noreferrer">GitHub · PRO</a>
+        <span class="gate-donate-dot" aria-hidden="true">·</span>
+        <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener noreferrer">Boosty</a>
+        <span class="gate-donate-dot" aria-hidden="true">·</span>
+        <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener noreferrer">Ozon СБП</a>
+        <span class="gate-donate-dot" aria-hidden="true">·</span>
+        <a href="https://t.me/lot_andrey" target="_blank" rel="noopener noreferrer">Telegram</a>
+      </nav>
     </div>
   </div>
 
@@ -293,6 +318,6 @@
     </div>
   </dialog>
 
-  <script src="/app.js" type="module"></script>
+  <script src="/app.js?v=1.2.28" type="module"></script>
 </body>
 </html>
