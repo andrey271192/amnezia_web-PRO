@@ -163,15 +163,30 @@
         <span class="fold-arrow" aria-hidden="true"></span>
         <span class="fold-titles">
           <span class="fold-h">Новый клиент под каскад</span>
-          <span class="muted fold-meta">Создать peer и скачать .conf</span>
+          <span class="muted fold-meta">Клиент стучится в «первый» узел → трафик сюда; ключи выдаём на этом VPS</span>
         </span>
       </summary>
       <div class="panel-fold-body">
-        <p class="muted cascade-intro">
-          Укажите <strong>Endpoint</strong> — публичный IP или DNS узла, <em>куда клиент будет подключаться первым шагом</em>
-          (промежуточный сервер, домашний роутер с пробросом порта и т.д.). Порт по умолчанию совпадает с <code class="inline">ListenPort</code> этого инстанса.
-          Клиент будет <strong>создан на текущем сервере AmneziaWG</strong> (новые ключи); IP в туннеле можно задать явно или оставить пустым — подберём свободный в той же подсети, что у остальных.
-        </p>
+        <div class="muted cascade-guide">
+          <p class="cascade-intro">
+            <strong>Что здесь происходит.</strong> Приложение Amnezia всегда смотрит на поле <strong>Endpoint</strong> в конфиге.
+            При каскаде клиент «видит» только <strong>промежуточный узел</strong> (часто недорогой VPS поближе к пользователям), а <strong>реальное соединение AmneziaWG живёт на этом сервере</strong>, где крутится ваш основной контейнер.
+            Ключ и peer создаём здесь и выдаём файл <code class="inline">.conf</code> — Endpoint в файле будет на промежуточную машину, а не на прямой IP этого VPS в интернете.
+          </p>
+          <p class="cascade-intro cascade-intro-tight"><strong>Сначала нужна пересылка порта до этого VPS.</strong> На промежуточном сервере настройте проброс DNAT UDP (и TCP при необходимости).
+            Удобный вариант с веб-панелью iptables —
+            репозиторий <a href="https://github.com/andrey271192/kaskad_web_vpn" target="_blank" rel="noopener noreferrer"><strong>kaskad_web_vpn</strong></a>:
+            ставится одной командой ниже; в её панели создаёте правило «входящий порт → UDP на IP:порт этого AmneziaWG». Подробнее — README в том же репозитории.</p>
+          <pre class="cascade-snippet" tabindex="0" role="note" aria-label="Установка kaskad_web_vpn на промежуточном VPS">curl -fsSL https://raw.githubusercontent.com/andrey271192/kaskad_web_vpn/main/install.sh | sudo bash</pre>
+          <p class="cascade-intro cascade-intro-tight">После установки откройте <code class="inline">http://ПЕРЕХОДНОЙ_IP:8088/setup</code> (или свой <code class="inline">HOST_PORT</code>), задайте пароль админки каскада и добавьте правило проброса на <strong><code class="inline">ListenPort</code> этого инстанса</strong> на данном VPS (видно в шапке панели или в <code class="inline">awg show</code>).</p>
+          <ol class="cascade-steps">
+            <li>На промежуточном VPS: <strong>kaskad_web_vpn</strong> (команда выше) или свой DNAT / проброс порта на роутере.</li>
+            <li>Проверьте, что с промежуточной машины доходит UDP до WG-порта на <strong>этом</strong> сервере (если ниже поле порта Endpoint пустое — это тот же порт, что <code class="inline">ListenPort</code> здесь).</li>
+            <li>В форме ниже в <strong>Endpoint</strong> укажите публичный <strong>IP или DNS промежуточного узла</strong> — тот адрес, с которым реально установит туннель клиентское приложение из интернета.</li>
+            <li>Нажмите <strong>Создать на сервере и скачать .conf</strong> и импортируйте файл в Amnezia на телефоне или ПК.</li>
+          </ol>
+          <p class="cascade-intro cascade-intro-tight"><strong>Порт Endpoint</strong> — когда снаружи слушает не тот номер порта, что WG здесь (пусто значит «как у сервера»). <strong>IP в VPN-туннеле</strong> можно не заполнять — подберём свободный адрес в той же подсети, что у остальных клиентов.</p>
+        </div>
         <form id="cascade-form" class="cascade-form">
           <label for="cascade-endpoint">Endpoint (хост для клиента)</label>
           <input id="cascade-endpoint" type="text" placeholder="Например 203.0.113.50 или ddns.example.com" required autocomplete="off">

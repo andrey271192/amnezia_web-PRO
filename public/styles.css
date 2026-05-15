@@ -505,7 +505,7 @@ h1 {
 }
 
 .panel-fold-body > .warp-intro:first-child,
-.panel-fold-body > .cascade-intro:first-child {
+.panel-fold-body > .cascade-guide:first-child {
   margin-top: 0.85rem;
 }
 
@@ -700,6 +700,53 @@ tr:last-child td {
 
 .cascade-intro code.inline {
   font-size: 0.85em;
+}
+
+.cascade-guide .cascade-intro {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.cascade-guide .cascade-intro-tight {
+  margin-bottom: 0.55rem;
+}
+
+.cascade-guide a {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+.cascade-guide a:hover {
+  color: #bae6fd;
+}
+
+.cascade-steps {
+  margin: 0.65rem 0 0.85rem;
+  padding-left: 1.35rem;
+  line-height: 1.52;
+}
+
+.cascade-steps li {
+  margin-bottom: 0.45rem;
+}
+
+.cascade-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.cascade-snippet {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0a0f16;
+  border: 1px solid var(--line);
+  padding: 0.75rem 0.95rem;
+  border-radius: 12px;
+  color: #cbd5f5;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 0.5rem 0 0.85rem;
+  max-width: min(52rem, 100%);
 }
 
 .cascade-form {
