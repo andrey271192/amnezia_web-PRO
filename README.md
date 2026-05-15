@@ -1,22 +1,5 @@
 # amnezia_web-PRO
 
-> Где поддержать: [Boosty (донат)](https://boosty.to/andrey27/donate) · [Ozon СБП](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) · [Telegram @lot_andrey](https://t.me/lot_andrey) · [**GitHub** ↗](https://github.com/andrey271192/amnezia_web-PRO)
-
-## Поддержка проекта
-
----
-
-- ⭐ **GitHub:** [andrey271192/amnezia_web-PRO](https://github.com/andrey271192/amnezia_web-PRO)
-- 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
-- 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
-- ✉️ **Telegram:** [@lot_andrey](https://t.me/lot_andrey)
-
-Веб-панель на вашем VPS для управления клиентами **AmneziaWG**: вкл/выкл, удаление, переименование, дата отключения; при нескольких контейнерах — переключатель **«Инстанс»** (`AWG_PROFILES`); **экспорт .conf** при наличии `last_config`; **новый клиент под каскад** (свой Endpoint и ключи на сервере); **Telegram MTProto‑прокси** (отдельный контейнер `telegrammessenger/proxy`, управление из панели). **Cloudflare WARP** — *необязательное* дополнение: часть клиентов может выходить в интернет через интерфейс `warp` внутри контейнера AWG (ставится отдельно скриптом на хосте). Работает через Docker и `docker exec` в контейнер **Amnezia** (по умолчанию `amnezia-awg2`).
-
-Справочник по интерфейсу, типичным сбоям и HTTP API: **[docs/panel-guide.md](docs/panel-guide.md)**.
-
-**Безопасность:** контейнер с монтированием `docker.sock` эквивалентен root на хосте — используйте сложный пароль и по возможности ограничьте доступ по IP или TLS.
-
 ### Редакции: открытая база и PRO
 
 - **[amnezia_web](https://github.com/andrey271192/amnezia_web)** — открытый репозиторий **базовой** панели: **только просмотр** клиентов AmneziaWG и статусов. Нет включения/выключения peer в туннеле, правки дат отключения, переименования, удаления, экспорта `.conf`, блока «Новый клиент под каскад», Cloudflare WARP, Telegram MTProto‑прокси и синхронизации времени хоста по SSH. Редакция задаётся файлом **`.amnezia-panel-edition`** со значением `community` (его подставляет установщик этого форка) или переменной **`AMNEZIA_EDITION=community`**. Текст и кнопка «Разблокировать PRO» используют **`COMMUNITY_UPGRADE_URL`** и **`COMMUNITY_UPGRADE_PITCH`** (по умолчанию URL ведёт на страницу подписки уровня PRO на Boosty). Типичная установка PRO для подписчиков — через публичный **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (Compose + образ GHCR); исходники **amnezia_web-PRO** — приватный репозиторий для сборки из кода при необходимости.
@@ -389,3 +372,14 @@ ADMIN_PASSWORD=localtest node server.js
 ## Лицензия
 
 MIT, см. [LICENSE](LICENSE).
+
+---
+
+## Поддержка проекта
+
+---
+
+- ⭐ **GitHub:** [andrey271192/amnezia_web-PRO](https://github.com/andrey271192/amnezia_web-PRO)
+- 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
+- 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
+- ✉️ **Telegram:** [@lot_andrey](https://t.me/lot_andrey)
