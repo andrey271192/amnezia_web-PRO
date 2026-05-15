@@ -8,7 +8,7 @@
 
 ### Редакции: открытая база и PRO
 
-- **[amnezia_web](https://github.com/andrey271192/amnezia_web)** — открытый репозиторий **базовой** панели: **только просмотр** клиентов AmneziaWG и статусов. Нет включения/выключения peer в туннеле, правки дат отключения, переименования, удаления, экспорта `.conf`, блока «Новый клиент под каскад», Cloudflare WARP, Telegram MTProto‑прокси и синхронизации времени хоста по SSH. Редакция задаётся файлом **`.amnezia-panel-edition`** со значением `community` (его подставляет установщик этого форка) или переменной **`AMNEZIA_EDITION=community`**. Текст и кнопка «Разблокировать PRO» используют **`COMMUNITY_UPGRADE_URL`** и **`COMMUNITY_UPGRADE_PITCH`** (по умолчанию URL ведёт на страницу подписки уровня PRO на Boosty); полный код и приватный репозиторий **amnezia_web-PRO** подключаются подписчикам отдельно.
+- **[amnezia_web](https://github.com/andrey271192/amnezia_web)** — открытый репозиторий **базовой** панели: **только просмотр** клиентов AmneziaWG и статусов. Нет включения/выключения peer в туннеле, правки дат отключения, переименования, удаления, экспорта `.conf`, блока «Новый клиент под каскад», Cloudflare WARP, Telegram MTProto‑прокси и синхронизации времени хоста по SSH. Редакция задаётся файлом **`.amnezia-panel-edition`** со значением `community` (его подставляет установщик этого форка) или переменной **`AMNEZIA_EDITION=community`**. Текст и кнопка «Разблокировать PRO» используют **`COMMUNITY_UPGRADE_URL`** и **`COMMUNITY_UPGRADE_PITCH`** (по умолчанию URL ведёт на страницу подписки уровня PRO на Boosty). Типичная установка PRO для подписчиков — через публичный **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (Compose + образ GHCR); исходники **amnezia_web-PRO** — приватный репозиторий для сборки из кода при необходимости.
 
 - **Этот репозиторий (`amnezia_web-PRO`)** — **полная** панель (редакция **pro** по умолчанию): все функции из README ниже активны, если не задана **`AMNEZIA_EDITION=community`**.
 
@@ -33,9 +33,21 @@
 
 ---
 
-## Установка одной командой
+## Установка
 
-На сервере под **root** (или через `sudo`):
+### Подписчики PRO: публичный репозиторий с Docker Compose
+
+Рабочую установку **в проде** автор ведёт не через сборку этого приватного репозитория с GitHub tarball, а через **открытый** бандл **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)**: там `docker compose`, образ из **GHCR** и один скрипт `quick-install.sh`. Подробности, пат для **`docker pull`** (`read:packages`) и переход FREE → PRO — **в README того репозитория**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-web-pro-deploy/main/quick-install.sh | sudo bash
+```
+
+Панель после установки по-прежнему открывается в браузере по **`http://IP:HOST_PORT`** (порт задаётся в процессе установки / в `.env` деплоя).
+
+### Сборка из исходников (`amnezia_web-PRO`)
+
+Подходит для разработки и самособорки локально или при полном доступе к коду на GitHub:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
@@ -241,9 +253,11 @@ UI_HIDE_SECTIONS=warp,cascade curl -fsSL https://raw.githubusercontent.com/andre
 
 ### Обновление до новой версии
 
-Коммиты на GitHub **сами не попадают** в уже запущенный контейнер: нужно заново **скачать код и пересобрать образ** (`amnezia-admin` и, если не отключали лендинг, **`amnezia-web-landing`**).
+Если панель стоит через **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (Compose + образ из GHCR), обновление по инструкции **того** репозитория — см. блок **«Обновление»** в его README (**`IMAGE_TAG`** / **`scripts/update.sh`**).
 
-Проще всего — та же команда, что при установке (данные в `DATA_DIR`, пароль и `AWG_PROFILES` сохранятся — профили подтягиваются из файла на VPS или из старого контейнера). Скрипт **подставит прежний внешний порт** контейнера `amnezia-admin`, если вы не передавали `HOST_PORT` и в коде по умолчанию стоит `8080`:
+Если же вы собирали из этого репозитория через **`scripts/install.sh`**, коммиты на GitHub **сами не попадают** в уже запущенный контейнер: нужно заново **скачать код и пересобрать образ** (`amnezia-admin` и, если не отключали лендинг, **`amnezia-web-landing`**).
+
+Проще всего для пути из исходников — та же команда, что при установке (данные в `DATA_DIR`, пароль и `AWG_PROFILES` сохранятся — профили подтягиваются из файла на VPS или из старого контейнера). Скрипт **подставит прежний внешний порт** контейнера `amnezia-admin`, если вы не передавали `HOST_PORT` и в коде по умолчанию стоит `8080`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
