@@ -35,7 +35,27 @@
 
 ## Установка одной командой
 
-На сервере под **root** (или через `sudo`), когда репозиторий уже опубликован на GitHub:
+Репозиторий **`amnezia_web-PRO`** на GitHub **приватный**: без авторизации API и CDN ответят **`404`** (GitHub маскирует недоступ), а установщик внутри скачивает архив через **`api.github.com/repos/…/tarball`** только если задан **`GITHUB_TOKEN`** или **`GH_TOKEN`** с доступом **`Contents` read** к этому репозиторию. Код можно пушить с машины аккаунта с правами на запись без ограничений; вопрос касается только **первая установка / апдейты с голого VPS** у тех, кому нужен доступ через GitHub API.
+
+### Рекомендуемый вариант: PAT и одна строка
+
+```bash
+export GITHUB_TOKEN='ghp_…'          # или fine-grained github_pat_… → только нужный repo, Contents Read
+curl -fsSL \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh \
+| sudo -E bash
+```
+
+Первый **`curl`** авторизует выгрузку **приватного** `install.sh` по **raw**. Флаг **`sudo -E`** передаёт **`GITHUB_TOKEN`** в root-оболочку: тогда и сам **`install.sh`**, когда качнет тарбол, подставит **`Authorization: Bearer`** (то же уже реализовано в скрипте).
+
+Под **root** без `sudo` достаточно **`curl … | bash`** при том же **`export GITHUB_TOKEN`**.
+
+**Иначе:** клонируйте репозиторий по SSH или HTTPS+PAT на **`/opt/amnezia-admin`**, затем обновление без скачивания токеном см. ниже блок **«Уже скачали проект вручную»**.
+
+### Если репозиторий у вас публичный (форк или зеркало)
+
+Тогда токен не обязателен:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
