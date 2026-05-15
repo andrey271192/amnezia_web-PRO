@@ -21,6 +21,19 @@ const warpActionsEl = document.querySelector("#warp-actions");
 const warpClientListEl = document.querySelector("#warp-client-list");
 const warpWgShowEl = document.querySelector("#warp-wg-show");
 
+const mtprotoPanel = document.querySelector("#mtproto-panel");
+const mtprotoStatusLine = document.querySelector("#mtproto-status-line");
+const mtprotoActionsEl = document.querySelector("#mtproto-actions");
+const mtprotoLogsTailEl = document.querySelector("#mtproto-logs-tail");
+const mtprotoBanner = document.querySelector("#mtproto-banner");
+const mtprotoHostPortInput = document.querySelector("#mtproto-host-port");
+const mtprotoSecretInput = document.querySelector("#mtproto-secret-opt");
+const mtprotoCalloutEl = document.querySelector("#mtproto-callout");
+const mtprotoLinkCardEl = document.querySelector("#mtproto-link-card");
+const mtprotoLinkAnchorEl = document.querySelector("#mtproto-link-anchor");
+const mtprotoLinkCopyBtn = document.querySelector("#mtproto-link-copy");
+const mtprotoLinkCopyState = document.querySelector("#mtproto-link-copy-state");
+
 const cascadePanel = document.querySelector("#cascade-panel");
 const usersPanel = document.querySelector("#users-panel");
 const wgRawDetails = document.querySelector("#wg-raw-details");
@@ -58,7 +71,7 @@ const warpSshErr = document.querySelector("#warp-ssh-err");
 let warpSshPendingCmd = null;
 
 /** Какие панели скрыты настройкой сервера (`UI_HIDE_SECTIONS`). */
-let uiHidden = { users: false, warp: false, cascade: false };
+let uiHidden = { users: false, warp: false, cascade: false, mtproto: false };
 
 const editionBanner = document.querySelector("#edition-banner");
 const DEFAULT_HEADER_SUB = document.querySelector(".top .sub")?.textContent?.trim() || "";
@@ -93,7 +106,7 @@ function applyEditionPayload(data) {
   if (subEl) {
     if (editionState.tier === "community") {
       subEl.textContent =
-        "Базовая панель amnezia_web: только просмотр клиентов AmneziaWG и статусов. Управление туннелем, экспорт .conf, каскад, Cloudflare WARP и синхронизация времени хоста — в версии PRO.";
+        "Базовая панель amnezia_web: только просмотр клиентов AmneziaWG и статусов. Управление туннелем, экспорт .conf, каскад, Cloudflare WARP, MTProto‑прокси Telegram и синхронизация времени хоста — в версии PRO.";
     } else {
       subEl.textContent = DEFAULT_HEADER_SUB;
     }
@@ -131,6 +144,200 @@ function applyEditionPayload(data) {
   if (wgRawDetails) wgRawDetails.hidden = uiHidden.users || !editionState.showDebugWg;
 }
 
+/** @param {string} [tgLink] */
+function setMtprotoLinkCard(tgLink) {
+  const t = typeof tgLink === "string" ? tgLink.trim() : "";
+  if (!mtprotoLinkCardEl) return;
+  if (!t) {
+    mtprotoLinkCardEl.classList.add("hidden");
+    delete mtprotoLinkCardEl.dataset.tgLink;
+    if (mtprotoLinkAnchorEl) {
+      mtprotoLinkAnchorEl.removeAttribute("href");
+      mtprotoLinkAnchorEl.textContent = "";
+    }
+    return;
+  }
+  mtprotoLinkCardEl.classList.remove("hidden");
+  mtprotoLinkCardEl.dataset.tgLink = t;
+  if (mtprotoLinkAnchorEl) {
+    mtprotoLinkAnchorEl.href = t;
+    mtprotoLinkAnchorEl.textContent = t;
+  }
+  if (mtprotoLinkCopyState) mtprotoLinkCopyState.textContent = "";
+}
+
+async function refreshMtprotoPanel() {
+  if (!mtprotoPanel || !mtprotoStatusLine || !mtprotoActionsEl) return;
+  if (uiHidden.mtproto) {
+    mtprotoPanel.hidden = true;
+    if (mtprotoCalloutEl) {
+      mtprotoCalloutEl.textContent = "";
+      mtprotoCalloutEl.classList.add("hidden");
+    }
+    setMtprotoLinkCard("");
+    return;
+  }
+  mtprotoPanel.hidden = false;
+  mtprotoActionsEl.innerHTML = "";
+  if (mtprotoBanner) {
+    mtprotoBanner.classList.add("hidden");
+    mtprotoBanner.textContent = "";
+  }
+  try {
+    if (mtprotoLogsTailEl) mtprotoLogsTailEl.textContent = "Загрузка логов…";
+    const snap = await api("/api/mtproto/status?withLogs=1");
+    if (snap.logsFetched !== true && snap.exists === true && snap.running === true) {
+      void (async () => {
+        try {
+          const lg =
+            (await api("/api/mtproto/tail").catch(() => api("/api/mtproto/logs"))) ||
+            ({ logsTail: "" });
+          const tail = typeof lg?.logsTail === "string" ? lg.logsTail : "";
+          if (mtprotoLogsTailEl) mtprotoLogsTailEl.textContent = tail;
+        } catch {
+          if (mtprotoLogsTailEl) {
+            mtprotoLogsTailEl.textContent = "(лог не загрузился — обновите раздел позже)";
+          }
+        }
+      })();
+    } else {
+      const tail = typeof snap.logsTail === "string" ? snap.logsTail : "";
+      if (mtprotoLogsTailEl) mtprotoLogsTailEl.textContent = tail;
+    }
+
+    if (mtprotoCalloutEl) {
+      if (snap.exists) {
+        const hp =
+          snap.hostPort != null && snap.hostPort !== "" ? String(snap.hostPort) : null;
+        mtprotoCalloutEl.classList.remove("hidden");
+        mtprotoCalloutEl.textContent = hp
+          ? `Официальный образ слушает 443/tcp внутри контейнера — это норма. На хост проброшен порт ${hp}: в Telegram указывайте публичный IP/DNS этого VPS и порт ${hp}. В логах ниже официальный прокси сам пишет tg:// и port=443 (внутренний процесс); при таком пробросе в клиенте используйте порт ${hp}, а не 443. Ссылку из синего блока панели (если показана) можно открыть как есть.`
+          : `Официальный образ слушает 443/tcp внутри контейнера; снаружи — порт хоста из строки статуса («порт хоста»). Если в логах видно tg:// с port=443, для подключения с интернета подставляйте порт хоста из статуса, не 443.`;
+      } else {
+        mtprotoCalloutEl.textContent = "";
+        mtprotoCalloutEl.classList.add("hidden");
+      }
+    }
+
+    const parts = [];
+    if (snap.exists) parts.push("контейнер есть");
+    if (snap.running) parts.push("запущен");
+    mtprotoStatusLine.textContent =
+      parts.length > 0
+        ? `${parts.join(" · ")}${
+            snap.hostPort ? ` · порт хоста :${String(snap.hostPort)}` : ""
+          }${snap.secretMasked ? ` · секрет ${snap.secretMasked}` : ""}`
+        : "не установлен";
+
+    if (typeof snap.hint === "string" && snap.hint.trim()) {
+      const hintEl = document.createElement("p");
+      hintEl.className = "muted warp-muted";
+      hintEl.textContent = snap.hint.trim();
+      mtprotoActionsEl.appendChild(hintEl);
+    } else if (snap.exists && !snap.running && typeof snap.image === "string" && snap.image.trim()) {
+      const imgHint = document.createElement("p");
+      imgHint.className = "muted warp-muted";
+      imgHint.textContent = `После установки образ будет доступен здесь (${snap.image.trim()} при актуальной конфигурации).`;
+      mtprotoActionsEl.appendChild(imgHint);
+    }
+
+    setMtprotoLinkCard(snap.tgLink);
+
+    const row = document.createElement("div");
+    row.className = "warp-actions";
+
+    row.appendChild(
+      btn("Установить / пересоздать", "btn small primary", async () => {
+        try {
+          setStatus("MTProto: docker pull/run…", false);
+          const hp = mtprotoHostPortInput?.value?.trim();
+          const sec = mtprotoSecretInput?.value?.trim()?.toLowerCase();
+          const body = {};
+          if (hp !== "" && hp !== undefined) {
+            const n = Number.parseInt(String(hp), 10);
+            if (Number.isFinite(n)) body.hostPort = n;
+          }
+          if (/^[a-f0-9]{32}$/.test(sec)) body.secret = sec;
+          const j = await api("/api/mtproto/install", { method: "POST", body: JSON.stringify(body) });
+          if (typeof j.tgLink === "string" && j.tgLink.trim()) setMtprotoLinkCard(j.tgLink.trim());
+          const lines = [];
+          if (typeof j.secretHex === "string") lines.push(`Секрет (сохраните): ${j.secretHex}`);
+          if (typeof j.tgLink === "string" && j.tgLink) lines.push(`Ссылка: ${j.tgLink}`);
+          if (mtprotoBanner) {
+            mtprotoBanner.textContent = lines.join("\n");
+            mtprotoBanner.classList.remove("hidden");
+          }
+          if (typeof j.secretHex === "string" && mtprotoSecretInput) mtprotoSecretInput.value = "";
+          await refreshMtprotoPanel();
+          setStatus("MTProto: готово", false);
+        } catch (e) {
+          setStatus(String(e?.message || e), true);
+        }
+      }),
+    );
+
+    row.appendChild(
+      btn("Перезапустить", "btn small ghost", async () => {
+        try {
+          setStatus("MTProto: перезапуск…", false);
+          await api("/api/mtproto/restart", { method: "POST", body: JSON.stringify({}) });
+          await refreshMtprotoPanel();
+          setStatus("", false);
+        } catch (e) {
+          setStatus(String(e?.message || e), true);
+        }
+      }),
+    );
+
+    row.appendChild(
+      btn("Удалить прокси", "btn small warn", async () => {
+        try {
+          if (
+            !confirm(
+              "Удалить контейнер MTProto? Секрет в Telegram сохранять не нужно — он пересоздастся заново при установке.",
+            )
+          )
+            return;
+          setStatus("MTProto: удаление…", false);
+          await api("/api/mtproto/remove", { method: "POST", body: JSON.stringify({}) });
+          if (mtprotoBanner) {
+            mtprotoBanner.classList.add("hidden");
+            mtprotoBanner.textContent = "";
+          }
+          await refreshMtprotoPanel();
+          setStatus("", false);
+        } catch (e) {
+          setStatus(String(e?.message || e), true);
+        }
+      }),
+    );
+
+    row.appendChild(
+      btn("Обновить статус", "btn small ghost", async () => {
+        try {
+          setStatus("", false);
+          await refreshMtprotoPanel();
+        } catch (e) {
+          setStatus(String(e?.message || e), true);
+        }
+      }),
+    );
+
+    mtprotoActionsEl.appendChild(row);
+  } catch (e) {
+    if (mtprotoCalloutEl) {
+      mtprotoCalloutEl.textContent = "";
+      mtprotoCalloutEl.classList.add("hidden");
+    }
+    setMtprotoLinkCard("");
+    if (mtprotoLogsTailEl) mtprotoLogsTailEl.textContent = "";
+    const err = document.createElement("p");
+    err.className = "muted warp-muted err";
+    err.textContent = String(e.message || e);
+    mtprotoActionsEl.appendChild(err);
+  }
+}
+
 function applyUiHiddenFromPayload(data) {
   const u = data?.uiHidden;
   if (u && typeof u === "object") {
@@ -138,11 +345,15 @@ function applyUiHiddenFromPayload(data) {
       users: Boolean(u.users),
       warp: Boolean(u.warp),
       cascade: Boolean(u.cascade),
+      mtproto: Boolean(u.mtproto),
     };
   }
   if (usersPanel) usersPanel.hidden = uiHidden.users;
   if (wgRawDetails) wgRawDetails.hidden = uiHidden.users || !editionState.showDebugWg;
   if (cascadePanel) cascadePanel.hidden = uiHidden.cascade;
+  if (warpPanel) warpPanel.hidden = uiHidden.warp;
+  if (mtprotoPanel) mtprotoPanel.hidden = uiHidden.mtproto;
+  void refreshMtprotoPanel();
 }
 
 let dtMode = "disable";
@@ -326,6 +537,8 @@ function setPwMsg(text, isErr) {
 }
 
 async function api(path, opts = {}) {
+  const pathOnly =
+    typeof path === "string" ? path.trim().replace(/\?.*$/, "") || String(path).trim() : "";
   const res = await fetch(path, {
     ...opts,
     credentials: "same-origin",
@@ -342,7 +555,19 @@ async function api(path, opts = {}) {
     data = { raw: text };
   }
   if (!res.ok) {
-    const msg = data.error || data.raw || res.statusText;
+    let msg = typeof data.error === "string" ? data.error : "";
+    if (!msg) msg = typeof data.raw === "string" ? data.raw : "";
+    if (!msg) msg = res.statusText;
+    const hint = typeof data.hint === "string" && data.hint.trim() ? data.hint.trim() : "";
+    if (hint) {
+      msg = msg ? `${msg} — ${hint}` : hint;
+    } else if (
+      res.status === 404 &&
+      /^\/api\/mtproto\b/.test(pathOnly) &&
+      /^not\s*found\s*$/i.test(String(msg).trim())
+    ) {
+      msg = `${msg.trim()} — проверьте GET /health (version): образ панели должен включать GET /api/mtproto/status, а прокси — весь /api/.`;
+    }
     throw new Error(msg);
   }
   return data;
@@ -871,6 +1096,14 @@ function renderWarpPanel(data) {
   warpStatusLine.textContent = parts.join(" · ");
 
   const selection = new Set((w.selectedAllowedIps || []).map(String));
+  const validWarpPeerIps = new Set();
+  for (const c of data.clients) {
+    if (!c.activeInConf) continue;
+    parseIpv4Cidrs(c.allowedIps).forEach((ip) => validWarpPeerIps.add(ip));
+  }
+  for (const ip of [...selection]) {
+    if (!validWarpPeerIps.has(ip)) selection.delete(ip);
+  }
 
   function redrawChecks() {
     warpClientListEl.innerHTML = "";
@@ -1187,7 +1420,42 @@ async function loadClients() {
     wgShowEl.textContent = "";
     peerCountEl.textContent = "";
     if (warpPanel) warpPanel.hidden = true;
+    if (mtprotoPanel) mtprotoPanel.hidden = true;
   }
+}
+
+function initMtprotoLinkCopy() {
+  if (!mtprotoLinkCopyBtn) return;
+  mtprotoLinkCopyBtn.addEventListener("click", async () => {
+    const link =
+      mtprotoLinkCardEl?.dataset?.tgLink ||
+      mtprotoLinkAnchorEl?.href ||
+      "";
+    if (!link) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+      else {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      if (mtprotoLinkCopyState) {
+        mtprotoLinkCopyState.textContent = "Скопировано";
+        setTimeout(() => {
+          if (mtprotoLinkCopyState) mtprotoLinkCopyState.textContent = "";
+        }, 2400);
+      }
+    } catch {
+      if (mtprotoLinkCopyState) {
+        mtprotoLinkCopyState.textContent = "Не удалось скопировать — выделите вручную.";
+      }
+    }
+  });
 }
 
 async function boot() {
@@ -1203,4 +1471,5 @@ async function boot() {
   }
 }
 
+initMtprotoLinkCopy();
 boot();

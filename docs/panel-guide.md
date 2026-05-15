@@ -9,6 +9,7 @@
 | **Инстанс** | Переключение между профилями из `AWG_PROFILES` (разные контейнеры AmneziaWG / Legacy). Виден только если в контейнере панели задан JSON из **двух и более** профилей. |
 | **Время** | Отображение часов контейнера и браузера; синхронизация времени хоста VPS по SSH (если доступно). |
 | **Cloudflare WARP** | *Необязательно.* Вывод части клиентов в интернет через интерфейс `warp` в контейнере AWG. Если WARP не ставили — статус **«Не установлен»** нормален; панель и VPN без этого работают. Установка и удаление — скрипт `scripts/warp-amnezia.sh` на хосте (`install` / **`uninstall`**), подробности в основном [README](../README.md). |
+| **Telegram MTProto‑прокси** | *Необязательно*, не часть AWG. Docker-контейнер официального образа **telegrammessenger/proxy**; установка из панели, ссылка **`tg://proxy`**, переменные **`MTPRO_*`** — см. основной [README](../README.md). |
 | **Новый клиент под каскад** | Создание нового peer на сервере с **вашим Endpoint** (промежуточный узел); выдача готового `.conf`. |
 | **Пользователи** | Вкл/выкл peer, удаление, переименование, даты отключения; экспорт `.conf` если в записи есть `userData.last_config`. |
 
@@ -44,11 +45,12 @@
 
 ## Скрытие разделов в панели (`UI_HIDE_*`)
 
-Переменные контейнера **`amnezia-admin`**: **`UI_HIDE_SECTIONS`** (список `users`, `warp`, `cascade`) или отдельно **`UI_HIDE_USERS`**, **`UI_HIDE_WARP`**, **`UI_HIDE_CASCADE`** (`1` / `true`). Подробности и пример — в таблице установки и разделе README про **`UI_HIDE_*`**.
+Переменные контейнера **`amnezia-admin`**: **`UI_HIDE_SECTIONS`** (список `users`, `warp`, `cascade`, **`mtproto`**) или отдельно **`UI_HIDE_USERS`**, **`UI_HIDE_WARP`**, **`UI_HIDE_CASCADE`**, **`UI_HIDE_MTPROTO`** (`1` / `true`). Подробности и пример — в таблице установки и разделе README про **`UI_HIDE_*`**.
 
 - **`warp`** — скрывает блок WARP; **`POST /api/warp/*`** → 403.
 - **`cascade`** — скрывает каскад; **`POST /api/clients/create-cascade`** → 403.
 - **`users`** — скрывает таблицу «Пользователи» и отладку **awg show**; **`GET /api/clients`** и остальные операции с клиентами **остаются** (скрыт только UI таблицы).
+- **`mtproto`** или **`UI_HIDE_MTPROTO`** — скрывает блок MTProto; **`GET`/`POST /api/mtproto/*`** → 403.
 
 ## Конфигурации клиентов
 
@@ -67,7 +69,7 @@
 
 | Метод | Путь | Назначение |
 |-------|------|------------|
-| GET | `/health` | Проверка живости |
+| GET | `/health` | Проверка живости; JSON **`{ ok, version }`** — **`version`** из `package.json` образа |
 | GET | `/api/session` | Есть ли действующая сессия |
 | POST | `/api/login` | `{ "password": "…" }` |
 | POST | `/api/logout` | Выход |
@@ -86,6 +88,12 @@
 | POST | `/api/warp/start` | Поднять WARP |
 | POST | `/api/warp/stop` | Остановить WARP |
 | POST | `/api/warp/routing` | Политика по клиентам |
+| GET | `/api/mtproto/status` | Состояние MTProto‑контейнера и **`tg://proxy`**; **`?withLogs=1`** — хвост логов (**`logsFetched`**) |
+| GET | `/api/mtproto/logs` | Хвост **`docker logs`** прокси |
+| GET | `/api/mtproto/tail` | То же для прокси, обрезающего путь **`…/logs`** |
+| POST | `/api/mtproto/install` | Установить/обновить контейнер (тело `{}`) |
+| POST | `/api/mtproto/restart` | Перезапустить контейнер |
+| POST | `/api/mtproto/remove` | Удалить контейнер |
 | GET | `/api/server-time` | Время и подсказки по поясам |
 | GET | `/api/time-sync-capabilities` | Доступность синхронизации по SSH |
 | POST | `/api/sync-host-time` | Запись времени на хост через SSH |

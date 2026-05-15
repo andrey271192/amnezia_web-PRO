@@ -29,7 +29,7 @@
       <div>
         <p class="eyebrow">Панель сервера</p>
         <h1>Пользователи AmneziaWG PRO</h1>
-        <p class="sub">Дату отключения задаёте сами (локальное время браузера). Кнопка «Выключить» убирает клиента из туннеля сразу. «Задать дату» без галочки — только запись в таблице; с галочкой — клиент остаётся в туннеле до наступления времени. Несколько инстансов задаются переменной <code class="inline">AWG_PROFILES</code>; установщик при апдейте подставляет её из прежнего контейнера или из <code class="inline">/root/amnezia-admin.awg-profiles.json</code>. Конфиг .conf — только если на сервере есть <code class="inline">last_config</code>; иначе используйте приложение Amnezia.</p>
+        <p class="sub">Дату отключения задаёте сами (локальное время браузера). Кнопка «Выключить» убирает клиента из туннеля сразу. «Задать дату» без галочки — только запись в таблице; с галочкой — клиент остаётся в туннеле до наступления времени. Несколько инстансов задаются переменной <code class="inline">AWG_PROFILES</code>; установщик при апдейте подставляет её из прежнего контейнера или из <code class="inline">/root/amnezia-admin.awg-profiles.json</code>. Конфиг .conf — только если на сервере есть <code class="inline">last_config</code>; иначе используйте приложение Amnezia. Отдельно: раздел <strong>Telegram MTProto‑прокси</strong> ставит официальный Docker‑образ <code class="inline">telegrammessenger/proxy</code> через панель.</p>
       </div>
       <div class="token-box">
         <div class="session-actions">
@@ -112,6 +112,48 @@
         <details class="raw warp-raw">
           <summary>Вывод wg show warp</summary>
           <pre id="warp-wg-show"></pre>
+        </details>
+      </div>
+    </details>
+
+    <details class="panel-fold mtproto-panel" id="mtproto-panel" hidden>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Telegram MTProto‑прокси</span>
+          <span class="muted fold-meta" id="mtproto-status-line"></span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <p class="muted warp-intro mtproto-intro">
+          Отдельный Docker‑контейнер (<strong>telegrammessenger/proxy</strong>), публикация порта на хосте VPS.
+          Ссылка <code class="inline">tg://proxy?…</code> подставляет хост из URL панели, если не заданы переменные; для постоянного IP/DNS укажите <code class="inline">MTPRO_PUBLIC_HOST</code> или <code class="inline">CLIENT_CONFIG_ENDPOINT</code>.
+          Секрет после установки сохраните вне панели — здесь он показывается маскированно.
+          За nginx/Caddy проксируйте префикс <code class="inline">/api/</code> целиком (см. README).
+        </p>
+        <p id="mtproto-callout" class="mtproto-callout hidden" role="note"></p>
+        <div id="mtproto-link-card" class="mtproto-link-card hidden" role="region" aria-label="Ссылка для Telegram">
+          <div class="mtproto-link-row">
+            <strong class="mtproto-link-label">Ссылка в Telegram</strong>
+            <a id="mtproto-link-anchor" class="mtproto-link-anchor" target="_blank" rel="noopener noreferrer"></a>
+          </div>
+          <div class="mtproto-link-row mtproto-link-actions">
+            <button type="button" id="mtproto-link-copy" class="btn small ghost">Скопировать</button>
+            <span id="mtproto-link-copy-state" class="muted warp-muted"></span>
+          </div>
+        </div>
+        <div class="mtproto-fields">
+          <label for="mtproto-host-port">Порт хоста (необязательно — по умолчанию см. MTPRO_PUBLISH_PORT, обычно 8443)</label>
+          <input id="mtproto-host-port" type="number" min="512" max="65535" autocomplete="off" placeholder="8443 или другой свободный порт">
+
+          <label for="mtproto-secret-opt">Кастомный секрет hex (32 символа, необязательно)</label>
+          <input id="mtproto-secret-opt" type="text" maxlength="32" autocomplete="off" placeholder="Пусто — сгенерируется">
+        </div>
+        <div id="mtproto-actions" class="warp-actions"></div>
+        <p id="mtproto-banner" class="status ok hidden" role="status"></p>
+        <details class="raw warp-raw">
+          <summary>Хвост логов контейнера mtproto‑proxy</summary>
+          <pre id="mtproto-logs-tail"></pre>
         </details>
       </div>
     </details>

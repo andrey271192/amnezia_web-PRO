@@ -947,6 +947,89 @@ tr:last-child td {
   line-height: 1.45;
 }
 
-.edition-banner-cta {
-  flex-shrink: 0;
+/* --- Telegram MTProto --- */
+.mtproto-link-card {
+  margin: 0.65rem 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mtproto-link-card.hidden {
+  display: none;
+}
+
+.mtproto-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.mtproto-link-label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.mtproto-link-anchor {
+  flex: 1 1 auto;
+  word-break: break-all;
+  color: var(--accent);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.84rem;
+}
+
+.mtproto-panel .warp-intro.mtproto-intro {
+  margin-top: 0;
+}
+
+.mtproto-fields {
+  display: grid;
+  gap: 0.35rem 0.85rem;
+  max-width: 28rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.mtproto-fields label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.mtproto-fields input {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(10, 15, 22, 0.55);
+  color: var(--text);
+  font: inherit;
+}
+
+.mtproto-deep-link strong {
+  display: inline-block;
+  margin-right: 0.35rem;
+}
+
+.mtproto-deep-link a {
+  word-break: break-all;
+}
+
+.mtproto-callout {
+  margin: 0.35rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  background: rgba(125, 211, 252, 0.1);
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.52;
+}
+
+#mtproto-banner {
+  margin: 0.75rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
 }

@@ -166,7 +166,7 @@ PREV_CONTAINER_ENV=""
 if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
   PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
 fi
-for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE WARP_SSH_INSTALL_DIR; do
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE UI_HIDE_MTPROTO WARP_SSH_INSTALL_DIR; do
   if [[ -z "${!__ui_var:-}" ]] && [[ -n "${PREV_CONTAINER_ENV}" ]]; then
     PREV_VAL=""
     while IFS= read -r __line; do
@@ -225,9 +225,16 @@ for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2
   fi
 done
 
-for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE WARP_SSH_INSTALL_DIR; do
+for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE UI_HIDE_MTPROTO WARP_SSH_INSTALL_DIR; do
   if [[ -n "${!__ui_var:-}" ]]; then
     RUN_ENV+=( -e "${__ui_var}=${!__ui_var}" )
+  fi
+done
+
+for __mt_vars in MTPRO_PROXY_CONTAINER MTPRO_PROXY_IMAGE MTPRO_INTERNAL_PORT MTPRO_PUBLISH_PORT \
+  MTPRO_PUBLISH_BIND MTPRO_PUBLIC_HOST; do
+  if [[ -n "${!__mt_vars:-}" ]]; then
+    RUN_ENV+=( -e "${__mt_vars}=${!__mt_vars}" )
   fi
 done
 

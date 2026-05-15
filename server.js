@@ -1,11 +1,21 @@
 import express from "express";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Из package.json — для /health и сверки образа после деплоя. */
+let PANEL_VERSION = "0.0.0";
+try {
+  const pkgRaw = fs.readFileSync(path.join(__dirname, "package.json"), "utf8");
+  const pv = JSON.parse(pkgRaw)?.version;
+  if (typeof pv === "string" && pv.trim()) PANEL_VERSION = pv.trim();
+} catch {
+  /* noop */
+}
 
 const PORT = Number(process.env.PORT || 3980);
 const PROFILE_COOKIE = "amnezia_prof";
@@ -19,7 +29,7 @@ function envTruthy(v) {
   return s === "1" || s === "true" || s === "yes";
 }
 
-/** Какие блоки веб-интерфейса скрыты: `UI_HIDE_SECTIONS=users,warp,cascade` или `UI_HIDE_USERS` и т.д. */
+/** Какие блоки веб-интерфейса скрыты: `UI_HIDE_SECTIONS=users,warp,cascade,mtproto` или `UI_HIDE_*` по отдельности. */
 function resolveUiHidden() {
   const raw = process.env.UI_HIDE_SECTIONS?.trim();
   const set = new Set();
@@ -33,6 +43,7 @@ function resolveUiHidden() {
     users: set.has("users") || envTruthy(process.env.UI_HIDE_USERS),
     warp: set.has("warp") || envTruthy(process.env.UI_HIDE_WARP),
     cascade: set.has("cascade") || envTruthy(process.env.UI_HIDE_CASCADE),
+    mtproto: set.has("mtproto") || envTruthy(process.env.UI_HIDE_MTPROTO),
   };
 }
 
@@ -63,6 +74,7 @@ function effectiveUiHidden() {
     users: UI_HIDDEN.users,
     warp: true,
     cascade: true,
+    mtproto: UI_HIDDEN.mtproto,
   };
 }
 
@@ -1355,11 +1367,152 @@ bootstrapPassword();
 const MSG_UI_WARP_OFF = "Раздел Cloudflare WARP отключён на этом сервере (UI_HIDE_SECTIONS / UI_HIDE_WARP).";
 const MSG_UI_CASCADE_OFF =
   "Каскад отключён на этом сервере (UI_HIDE_SECTIONS / UI_HIDE_CASCADE).";
+const MSG_UI_MTProto_OFF =
+  "Раздел MTProto отключён (UI_HIDE_SECTIONS включает mtproto или задан UI_HIDE_MTPROTO=1).";
+
+const MTPRO_CONTAINER = (process.env.MTPRO_PROXY_CONTAINER || "mtproto-proxy").trim();
+const MTPRO_IMAGE = (process.env.MTPRO_PROXY_IMAGE || "telegrammessenger/proxy:latest").trim();
+const MTPRO_INTERNAL_PORT = Number(process.env.MTPRO_INTERNAL_PORT || 443) || 443;
+const MTPRO_PUBLISH_PORT_DEFAULT = (() => {
+  const n = Number.parseInt(process.env.MTPRO_PUBLISH_PORT || "8443", 10);
+  return Number.isFinite(n) && n > 0 ? n : 8443;
+})();
+const MTPRO_PUBLISH_BIND = (process.env.MTPRO_PUBLISH_BIND || "0.0.0.0").trim() || "0.0.0.0";
+
+let mtprotoInstallBusy = false;
+
+function dockerSpawnSync(args, timeoutMs = 180_000) {
+  const r = spawnSync("docker", args, {
+    encoding: "utf8",
+    maxBuffer: 5 * 1024 * 1024,
+    timeout: timeoutMs,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return {
+    code: typeof r.status === "number" ? r.status : 1,
+    stdout: String(r.stdout || ""),
+    stderr: String(r.stderr || ""),
+  };
+}
+
+function envArrayToMap(envArr) {
+  const out = {};
+  if (!Array.isArray(envArr)) return out;
+  for (const line of envArr) {
+    const i = line.indexOf("=");
+    if (i <= 0) continue;
+    out[line.slice(0, i)] = line.slice(i + 1);
+  }
+  return out;
+}
+
+function mtprotoParsedInspect() {
+  const r = dockerSpawnSync(["inspect", MTPRO_CONTAINER], 20_000);
+  if (r.code !== 0) return null;
+  try {
+    const arr = JSON.parse(r.stdout);
+    return arr?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function mtprotoHostPort(ins) {
+  const key = `${MTPRO_INTERNAL_PORT}/tcp`;
+  const bind = ins?.HostConfig?.PortBindings?.[key];
+  if (Array.isArray(bind) && bind[0]?.HostPort) return String(bind[0].HostPort);
+  const ex = ins?.NetworkSettings?.Ports?.[key];
+  if (Array.isArray(ex) && ex[0]?.HostPort) return String(ex[0].HostPort);
+  return null;
+}
+
+function mtprotoAdvertisedHost() {
+  return process.env.MTPRO_PUBLIC_HOST?.trim() || process.env.CLIENT_CONFIG_ENDPOINT?.trim() || "";
+}
+
+/** Хост из заголовка Host (без :порт) — фоллбек для tg://, если env не заданы. */
+function hostFromRequest(req) {
+  const raw = String(req?.headers?.host || "").trim();
+  if (!raw) return "";
+  const bare = raw.replace(/^\[/, "").replace(/\]:\d+$/, "]").replace(/:\d+$/, "");
+  if (!bare || /^(localhost|127\.|0\.0\.0\.0|::1?$)/i.test(bare)) return "";
+  return bare;
+}
+
+function mtprotoMaskedSecret(secret) {
+  const s = String(secret || "").trim();
+  if (s.length < 10) return "········";
+  return `········${s.slice(-6)}`;
+}
+
+function mtprotoTelegramDeepLink(host, port, secretHex) {
+  const h = String(host || "").trim();
+  const p = Number(port);
+  const sec = String(secretHex || "").trim();
+  if (!h || !Number.isFinite(p) || !sec) return "";
+  try {
+    return `tg://proxy?server=${encodeURIComponent(h)}&port=${encodeURIComponent(String(p))}&secret=${encodeURIComponent(sec)}`;
+  } catch {
+    return "";
+  }
+}
+
+function mtprotoNormalizeSecret(hex) {
+  const s = String(hex || "").trim().toLowerCase();
+  if (/^[0-9a-f]{32}$/.test(s)) return s;
+  return "";
+}
+
+function mtprotoSnapshot(fallbackHost = "") {
+  const ins = mtprotoParsedInspect();
+  const advEnv = mtprotoAdvertisedHost();
+  const advFallback = String(fallbackHost || "").trim();
+  const advEffective = advEnv || advFallback;
+  const advSource = advEnv ? "env" : advFallback ? "request" : "";
+
+  if (!ins) {
+    return {
+      exists: false,
+      running: false,
+      container: MTPRO_CONTAINER,
+      image: MTPRO_IMAGE,
+      hostPort: null,
+      advertisedHost: advEffective,
+      advertisedHostSource: advSource,
+      secretMasked: "",
+      tgLink: "",
+      hint: "Контейнер не найден — нажмите «Установить».",
+    };
+  }
+  const state = String(ins?.State?.Status || "").toLowerCase();
+  const running = state === "running";
+  const cfg = ins?.Config || {};
+  const envMap = envArrayToMap(cfg?.Env);
+  const secret = envMap.SECRET || "";
+  const hostPort = mtprotoHostPort(ins);
+  return {
+    exists: true,
+    running,
+    container: MTPRO_CONTAINER,
+    image: String(cfg?.Image || MTPRO_IMAGE),
+    hostPort,
+    advertisedHost: advEffective,
+    advertisedHostSource: advSource,
+    secretMasked: secret ? mtprotoMaskedSecret(secret) : "",
+    tgLink: mtprotoTelegramDeepLink(advEffective, Number(hostPort || 0), secret),
+    restartCount: Number(ins?.RestartCount || 0) || 0,
+    hint: advEnv
+      ? ""
+      : advFallback
+        ? `Хост ${advFallback} взят из адреса, по которому открыта эта панель. Чтобы зафиксировать публичный IP/DNS, задайте MTPRO_PUBLIC_HOST или CLIENT_CONFIG_ENDPOINT в контейнере панели.`
+        : "Задайте MTPRO_PUBLIC_HOST или CLIENT_CONFIG_ENDPOINT на IP/DNS VPS — тогда появится прямая ссылка tg:// для клиентов.",
+  };
+}
 
 const app = express();
-if (UI_HIDDEN.users || UI_HIDDEN.warp || UI_HIDDEN.cascade) {
+if (UI_HIDDEN.users || UI_HIDDEN.warp || UI_HIDDEN.cascade || UI_HIDDEN.mtproto) {
   console.warn(
-    `UI_HIDDEN: users=${UI_HIDDEN.users} warp=${UI_HIDDEN.warp} cascade=${UI_HIDDEN.cascade}`,
+    `UI_HIDDEN: users=${UI_HIDDEN.users} warp=${UI_HIDDEN.warp} cascade=${UI_HIDDEN.cascade} mtproto=${UI_HIDDEN.mtproto}`,
   );
 }
 if (IS_COMMUNITY) {
@@ -1368,7 +1521,7 @@ if (IS_COMMUNITY) {
 app.use(express.json({ limit: "512kb" }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, version: PANEL_VERSION });
 });
 
 app.get("/api/session", (req, res) => {
@@ -1424,6 +1577,171 @@ app.get("/api/time-sync-capabilities", requireAuth, (_req, res) => {
     sshHost: process.env.TIME_SYNC_SSH_HOST?.trim() || "172.17.0.1",
     serverClockTimeZone: resolveServerClockTimeZone(),
   });
+});
+
+function mtprotoLogsTailPayload(req) {
+  const snap = mtprotoSnapshot(hostFromRequest(req));
+  if (!snap.exists || !snap.running) return { logsTail: "" };
+  const l = dockerSpawnSync(["logs", "--tail", "100", MTPRO_CONTAINER], 12_000);
+  let logsTail = "";
+  if (l.code === 0) logsTail = l.stdout.trim().slice(-4500);
+  return { logsTail };
+}
+
+app.get("/api/mtproto/status", requireAuth, (req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  const snap = mtprotoSnapshot(hostFromRequest(req));
+  const withLogs =
+    typeof req.query.withLogs === "string" &&
+    (req.query.withLogs === "1" || req.query.withLogs === "");
+  if (!withLogs) {
+    res.json({ ...snap });
+    return;
+  }
+  const { logsTail } = mtprotoLogsTailPayload(req);
+  res.json({ ...snap, logsTail, logsFetched: true });
+});
+
+app.get("/api/mtproto/logs", requireAuth, (req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  res.json(mtprotoLogsTailPayload(req));
+});
+
+app.get("/api/mtproto/tail", requireAuth, (req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  res.json(mtprotoLogsTailPayload(req));
+});
+
+app.post("/api/mtproto/install", requireAuth, (req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  if (!/^[a-zA-Z][a-zA-Z0-9_.-]*$/.test(MTPRO_CONTAINER)) {
+    return res.status(500).json({
+      error:
+        "Некорректное имя Docker-контейнера MTProto (переменная окружения MTPRO_PROXY_CONTAINER).",
+    });
+  }
+  if (!/^[a-zA-Z0-9_.\-/:@]+$/.test(MTPRO_IMAGE)) {
+    return res.status(500).json({
+      error: "Некорректное имя образа MTProto (переменная MTPRO_PROXY_IMAGE).",
+    });
+  }
+  if (!/^[0-9.:a-fA-F]+$/.test(MTPRO_PUBLISH_BIND)) {
+    return res.status(500).json({
+      error: "Некорректный MTPRO_PUBLISH_BIND.",
+    });
+  }
+
+  let hostPort = MTPRO_PUBLISH_PORT_DEFAULT;
+  const hpReq = req.body?.hostPort;
+  if (hpReq !== undefined && hpReq !== null && hpReq !== "") {
+    const parsed = typeof hpReq === "number" ? hpReq : Number.parseInt(String(hpReq).trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 512 || parsed > 65535) {
+      return res.status(400).json({ error: "Порт (hostPort): целое 512 … 65535." });
+    }
+    hostPort = parsed;
+  }
+
+  const userSec = mtprotoNormalizeSecret(typeof req.body?.secret === "string" ? req.body.secret : "");
+  const secretFinal = userSec || crypto.randomBytes(16).toString("hex");
+
+  if (mtprotoInstallBusy) return res.status(429).json({ error: "Установка MTProto уже выполняется." });
+
+  mtprotoInstallBusy = true;
+  try {
+    const rm = dockerSpawnSync(["rm", "-f", MTPRO_CONTAINER], 120_000);
+    if (rm.code !== 0 && !/No such container/i.test(`${rm.stderr} ${rm.stdout}`)) {
+      return res.status(400).json({
+        error: `docker rm завершился с кодом ${rm.code}`,
+        stderr: rm.stderr.trim().slice(0, 2000),
+      });
+    }
+
+    const pull = dockerSpawnSync(["pull", MTPRO_IMAGE], 600_000);
+    if (pull.code !== 0) {
+      return res.status(400).json({
+        error: "Не удалось docker pull образа.",
+        stderr: `${pull.stderr || ""}${pull.stdout || ""}`.trim().slice(0, 2000),
+      });
+    }
+
+    const pub = `${MTPRO_PUBLISH_BIND}:${hostPort}:${MTPRO_INTERNAL_PORT}/tcp`;
+    const args = [
+      "run",
+      "-d",
+      "--name",
+      MTPRO_CONTAINER,
+      "--restart",
+      "unless-stopped",
+      "-p",
+      pub,
+      "-e",
+      `SECRET=${secretFinal}`,
+      MTPRO_IMAGE,
+    ];
+    const run = dockerSpawnSync(args, 120_000);
+    if (run.code !== 0) {
+      return res.status(400).json({
+        error: `docker run завершился с кодом ${run.code}`,
+        stderr: `${run.stderr}${run.stdout}`.trim().slice(0, 4000),
+      });
+    }
+
+    const fallback = hostFromRequest(req);
+    const advEnv = mtprotoAdvertisedHost();
+    const advEffective = advEnv || fallback;
+    const snap = mtprotoSnapshot(fallback);
+    const tgLink = mtprotoTelegramDeepLink(advEffective, hostPort, secretFinal);
+
+    res.json({
+      ok: true,
+      secretHex: secretFinal,
+      hostPort,
+      tgLink,
+      advertisedHost: advEffective,
+      advertisedHostSource: advEnv ? "env" : fallback ? "request" : "",
+      snapshot: snap,
+    });
+  } finally {
+    mtprotoInstallBusy = false;
+  }
+});
+
+app.post("/api/mtproto/remove", requireAuth, (_req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  const r = dockerSpawnSync(["rm", "-f", MTPRO_CONTAINER], 120_000);
+  if (r.code !== 0 && !/No such container/i.test(`${r.stderr} ${r.stdout}`)) {
+    return res.status(400).json({
+      error: "Не удалось удалить контейнер MTProto.",
+      stderr: `${r.stderr}${r.stdout}`.trim().slice(0, 2000),
+    });
+  }
+  res.json({ ok: true });
+});
+
+app.post("/api/mtproto/restart", requireAuth, (_req, res) => {
+  if (effectiveUiHidden().mtproto) {
+    return res.status(403).json({ error: MSG_UI_MTProto_OFF });
+  }
+  const snap = mtprotoSnapshot();
+  if (!snap.exists) return res.status(400).json({ error: "Контейнер MTProto ещё не установлен." });
+  const r = dockerSpawnSync(["restart", MTPRO_CONTAINER], 180_000);
+  if (r.code !== 0) {
+    return res.status(400).json({
+      error: `docker restart завершился с кодом ${r.code}`,
+      stderr: `${r.stderr}${r.stdout}`.trim().slice(0, 2000),
+    });
+  }
+  res.json({ ok: true });
 });
 
 app.post("/api/sync-host-time", requireAuth, requireProTier, async (req, res) => {
@@ -2106,13 +2424,22 @@ if (fs.existsSync(pub)) {
   );
 }
 
-app.use((_req, res) => {
+app.use((req, res) => {
+  if (typeof req.path === "string" && req.path.startsWith("/api/")) {
+    res.status(404).json({
+      error: "Not found",
+      path: `${req.originalUrl || req.path}`,
+      hint:
+        "Эндпоинта нет. Проверьте GET /health (version), что запрос идёт в контейнер панели и прокси пробрасывает весь префикс /api/.",
+    });
+    return;
+  }
   res.status(404).send("Not found");
 });
 
 app.listen(PORT, "0.0.0.0", () => {
   const summary = PROFILES.map((p) => `${p.label}→${p.container}`).join("; ");
-  console.log(`amnezia-admin on :${PORT} · ${summary} · data:${DATA_DIR}`);
+  console.log(`amnezia-admin v${PANEL_VERSION} on :${PORT} · ${summary} · data:${DATA_DIR}`);
 });
 
 setInterval(() => {
