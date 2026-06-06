@@ -131,8 +131,8 @@ function applyEditionPayload(data) {
       cta.target = "_blank";
       cta.href =
         editionState.upgradeUrl ||
-        "https://boosty.to/andrey27/purchase/3906453?ssource=DIRECT&share=subscription_link";
-      cta.textContent = "Разблокировать PRO (Boosty)";
+        "https://github.com/andrey271192/amnezia_web-PRO";
+      cta.textContent = "Открыть PRO на GitHub";
       wrap.append(textCol, cta);
       editionBanner.appendChild(wrap);
     } else {

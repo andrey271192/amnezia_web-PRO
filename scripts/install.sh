@@ -55,25 +55,13 @@ if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
     --retry-connrefused
   )
   if [[ "${INSTALL_SCRIPT_VERBOSE:-}" == "1" ]]; then CURL_OPTS+=(--progress-bar); fi
-  # Поддержка GITHUB_TOKEN / GH_TOKEN: для приватных репозиториев публичный
-  # URL /archive/refs/heads/<branch>.tar.gz отдаёт 404 без авторизации.
-  GH_AUTH_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  if [[ -n "${GH_AUTH_TOKEN}" ]]; then
-    CURL_OPTS+=(-H "Authorization: Bearer ${GH_AUTH_TOKEN}")
-    CURL_OPTS+=(-H "X-GitHub-Api-Version: 2022-11-28")
-  fi
   CURL_URL="${GITHUB_REPO_URL_OVERRIDE:-}"
   if [[ -z "${CURL_URL}" ]]; then
-    if [[ -n "${GH_AUTH_TOKEN}" ]]; then
-      # API-tarball работает и для приватных репо, и для публичных.
-      CURL_URL="https://api.github.com/repos/${GITHUB_REPO}/tarball/${BRANCH}"
-    else
-      CURL_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz"
-    fi
+    CURL_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${BRANCH}.tar.gz"
   fi
   if ! curl "${CURL_OPTS[@]}" "${CURL_URL}" | tar xz -C "${TMP}"; then
     echo "Ошибка: не удалось скачать или распаковать архив (${CURL_URL})."
-    echo "Подсказка: проверьте токен (для приватного репо нужен GITHUB_TOKEN/GH_TOKEN с правом Contents:Read), ping/curl до github.com, при необходимости export GITHUB_REPO_URL_OVERRIDE='…' или INSTALL_SCRIPT_VERBOSE=1."
+    echo "Подсказка: проверьте доступ к github.com, branch/repo, при необходимости export GITHUB_REPO_URL_OVERRIDE='…' или INSTALL_SCRIPT_VERBOSE=1."
     exit 1
   fi
   echo "→ Перенос распакованного дерева в ${INSTALL_DIR}…"
@@ -110,18 +98,24 @@ fi
 
 BOOT_PW=""
 PASS_FILE="/root/amnezia-admin.initial-password"
-if [[ -f "${DATA_DIR}/password.hash" ]]; then
-  echo "→ В ${DATA_DIR} уже есть password.hash — контейнер поднимется с прежним паролем."
-elif [[ -n "${ADMIN_PASSWORD:-}" ]]; then
+if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
   BOOT_PW="${ADMIN_PASSWORD}"
-  echo "→ Использую ADMIN_PASSWORD из окружения."
-elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
-  echo "→ ALLOW_DEFAULT_PASSWORD=1 — см. README, пароль по умолчанию для входа."
+  if [[ -f "${DATA_DIR}/password.hash" ]]; then
+    __pw_backup="${DATA_DIR}/password.hash.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -p "${DATA_DIR}/password.hash" "${__pw_backup}" 2>/dev/null || true
+    rm -f "${DATA_DIR}/password.hash"
+    rm -f "${DATA_DIR}/session.secret"
+    echo "→ ADMIN_PASSWORD задан — сбрасываю старый пароль панели (backup: ${__pw_backup})."
+  else
+    echo "→ Использую ADMIN_PASSWORD из окружения."
+  fi
+elif [[ -f "${DATA_DIR}/password.hash" ]]; then
+  echo "→ В ${DATA_DIR} уже есть password.hash — контейнер поднимется с прежним паролем."
 else
-  BOOT_PW="$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 22 || openssl rand -hex 16)"
+  BOOT_PW="admin"
   umask 077
   printf '%s\n' "${BOOT_PW}" >"${PASS_FILE}"
-  echo "→ Первый пароль записан в ${PASS_FILE}"
+  echo "→ Первый вход: admin / admin. Смените пароль сразу после входа."
 fi
 
 # AWG_PROFILES: не терять при апдейте без переменной (пропадает список «Инстанс»).
@@ -240,8 +234,6 @@ done
 
 if [[ -n "${BOOT_PW}" ]]; then
   RUN_ENV+=( -e "ADMIN_PASSWORD=${BOOT_PW}" )
-elif [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
-  RUN_ENV+=( -e "ALLOW_DEFAULT_PASSWORD=1" )
 fi
 
 if [[ -n "${AMNEZIA_EDITION:-}" ]]; then
@@ -292,9 +284,6 @@ if [[ "${SKIP_LANDING:-}" != "1" ]]; then
 fi
 if [[ -f "${PASS_FILE}" ]]; then
   echo "Первый пароль: $(cat "${PASS_FILE}")"
-fi
-if [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "1" ]] || [[ "${ALLOW_DEFAULT_PASSWORD:-}" == "true" ]]; then
-  echo "Пароль по умолчанию (смените в панели): AmneziaAdmin!ChangeMe"
 fi
 echo ""
 echo "Удаление: curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/${BRANCH}/scripts/uninstall.sh | sudo bash"

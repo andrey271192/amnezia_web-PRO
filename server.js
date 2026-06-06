@@ -53,10 +53,10 @@ const AMNEZIA_EDITION = (process.env.AMNEZIA_EDITION || "pro").trim().toLowerCas
 const IS_COMMUNITY = AMNEZIA_EDITION === "community";
 const COMMUNITY_UPGRADE_URL =
   process.env.COMMUNITY_UPGRADE_URL?.trim() ||
-  "https://boosty.to/andrey27/purchase/3906453?ssource=DIRECT&share=subscription_link";
+  "https://github.com/andrey271192/amnezia_web-PRO";
 const COMMUNITY_UPGRADE_PITCH =
   process.env.COMMUNITY_UPGRADE_PITCH?.trim() ||
-  "В PRO: вкл/выкл клиентов, даты и расписание отключений, переименование, удаление, экспорт .conf, каскад, Cloudflare WARP, синхронизация времени хоста. Полная сборка — приватный репозиторий amnezia_web-PRO; доступ по подписке Boosty.";
+  "В PRO: вкл/выкл клиентов, даты и расписание отключений, переименование, удаление, экспорт .conf, каскад, Cloudflare WARP, синхронизация времени хоста. Полная сборка открыта в публичном репозитории amnezia_web-PRO.";
 
 function editionPayload() {
   return {
@@ -219,22 +219,10 @@ function bootstrapPassword() {
     );
     return;
   }
-  const allowDefault =
-    process.env.ALLOW_DEFAULT_PASSWORD === "1" ||
-    process.env.ALLOW_DEFAULT_PASSWORD === "true";
-  const docPass = process.env.DEFAULT_ADMIN_PASSWORD || "AmneziaAdmin!ChangeMe";
-  if (allowDefault) {
-    passwordHashStored = hashPassword(docPass);
-    fs.writeFileSync(PW_FILE, `${passwordHashStored}\n`, { mode: 0o600 });
-    console.warn(
-      "Включён пароль по умолчанию из документации (README). Смените его в панели и отключите ALLOW_DEFAULT_PASSWORD."
-    );
-    return;
-  }
-  console.error(
-    "Нет пароля: задайте ADMIN_PASSWORD при первом запуске, см. README, или ALLOW_DEFAULT_PASSWORD=1 только для теста."
-  );
-  process.exit(1);
+  const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || "admin";
+  passwordHashStored = hashPassword(defaultPassword);
+  fs.writeFileSync(PW_FILE, `${passwordHashStored}\n`, { mode: 0o600 });
+  console.warn("Первый вход: admin / admin. Смените пароль сразу после входа.");
 }
 
 function signSession(payload) {

@@ -1,10 +1,10 @@
 # amnezia_web-PRO
 
-### Редакции: открытая база и PRO
+## Public PRO panel
 
-- **[amnezia_web](https://github.com/andrey271192/amnezia_web)** — открытый репозиторий **базовой** панели: **только просмотр** клиентов AmneziaWG и статусов. Нет включения/выключения peer в туннеле, правки дат отключения, переименования, удаления, экспорта `.conf`, блока «Новый клиент под каскад», Cloudflare WARP, Telegram MTProto‑прокси и синхронизации времени хоста по SSH. Редакция задаётся файлом **`.amnezia-panel-edition`** со значением `community` (его подставляет установщик этого форка) или переменной **`AMNEZIA_EDITION=community`**. Текст и кнопка «Разблокировать PRO» используют **`COMMUNITY_UPGRADE_URL`** и **`COMMUNITY_UPGRADE_PITCH`** (по умолчанию URL ведёт на страницу подписки уровня PRO на Boosty). Типичная установка PRO для подписчиков — через публичный **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (Compose + образ GHCR); исходники **amnezia_web-PRO** — приватный репозиторий для сборки из кода при необходимости.
+**amnezia_web-PRO** — public full Amnezia Web panel. One repository, one installer, no private download flow and no separate deploy repository.
 
-- **Этот репозиторий (`amnezia_web-PRO`)** — **полная** панель (редакция **pro** по умолчанию): все функции из README ниже активны, если не задана **`AMNEZIA_EDITION=community`**.
+Base project **[amnezia_web](https://github.com/andrey271192/amnezia_web)** remains a lighter open panel. This repository contains the full PRO feature set by default.
 
 ## Что открывается по какому порту
 
@@ -23,29 +23,19 @@
 <img src="docs/screenshots/panel-overview-password.png" alt="Панель: заголовок, подсказки по расписанию и нескольким инстансам, форма смены пароля" width="780"/>
 </p>
 
-Те же иллюстрации подходят и для связки установки через **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (контент панели тот же). Файлы: `docs/screenshots/panel-users-table.png`, `docs/screenshots/panel-overview-password.png` — замените на свои живые PNG при необходимости.
+Файлы: `docs/screenshots/panel-users-table.png`, `docs/screenshots/panel-overview-password.png` — замените на свои живые PNG при необходимости.
 
 ---
 
 ## Установка
 
-### Подписчики PRO: публичный репозиторий с Docker Compose
-
-Рабочую установку **в проде** автор ведёт не через сборку этого приватного репозитория с GitHub tarball, а через **открытый** бандл **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)**: там `docker compose`, образ из **GHCR** и один скрипт `quick-install.sh`. Подробности, пат для **`docker pull`** (`read:packages`) и переход FREE → PRO — **в README того репозитория**:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia-web-pro-deploy/main/quick-install.sh | sudo bash
-```
-
-Панель после установки по-прежнему открывается в браузере по **`http://IP:HOST_PORT`** (порт задаётся в процессе установки / в `.env` деплоя).
-
-### Сборка из исходников (`amnezia_web-PRO`)
-
-Подходит для разработки и самособорки локально или при полном доступе к коду на GitHub:
+### Public install from GitHub
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
 ```
+
+Панель после установки открывается по **`http://IP:HOST_PORT`** (по умолчанию `:8080`). Первый вход: **логин `admin`, пароль `admin`**. Смените пароль сразу после входа.
 
 ### Переменные окружения и `sudo`
 
@@ -106,7 +96,6 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `EXPORT_CONFIG_SECRET` | _(нет)_ | Секрет для прямой ссылки без входа в панель: `GET /api/clients/export-config?token=СЕКРЕТ&clientId=…&profileId=…` (при нескольких инстансах `profileId` обязателен). Не светите URL посторонним |
 | `ADMIN_PASSWORD` | _(генерируется)_ | Первый пароль вместо файла |
 | `SKIP_DOWNLOAD` | `0` | `1` — не качать GitHub, собрать из `INSTALL_DIR` |
-| `ALLOW_DEFAULT_PASSWORD` | `0` | `1` — см. раздел «Пароль» ниже |
 | `SKIP_LANDING` | `0` | `1` — не поднимать nginx-лендинг на `LANDING_PORT` |
 | `LANDING_PORT` | `80` | Порт nginx-лендинга (если `80` занят — например `8081`) |
 | `LANDING_CONTAINER` | `amnezia-web-landing` | Имя контейнера лендинга |
@@ -247,9 +236,7 @@ UI_HIDE_SECTIONS=warp,cascade curl -fsSL https://raw.githubusercontent.com/andre
 
 ### Обновление до новой версии
 
-Если панель стоит через **[amnezia-web-pro-deploy](https://github.com/andrey271192/amnezia-web-pro-deploy)** (Compose + образ из GHCR), обновление по инструкции **того** репозитория — см. блок **«Обновление»** в его README (**`IMAGE_TAG`** / **`scripts/update.sh`**).
-
-Если же вы собирали из этого репозитория через **`scripts/install.sh`**, коммиты на GitHub **сами не попадают** в уже запущенный контейнер: нужно заново **скачать код и пересобрать образ** (`amnezia-admin` и, если не отключали лендинг, **`amnezia-web-landing`**).
+Коммиты на GitHub **сами не попадают** в уже запущенный контейнер: нужно заново **скачать код и пересобрать образ** (`amnezia-admin` и, если не отключали лендинг, **`amnezia-web-landing`**).
 
 Проще всего для пути из исходников — та же команда, что при установке (данные в `DATA_DIR`, пароль и `AWG_PROFILES` сохранятся — профили подтягиваются из файла на VPS или из старого контейнера). Скрипт **подставит прежний внешний порт** контейнера `amnezia-admin`, если вы не передавали `HOST_PORT` и в коде по умолчанию стоит `8080`:
 
@@ -299,15 +286,14 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/s
 
 ## Первый вход и пароль
 
-### Режим по умолчанию (рекомендуется)
+### Режим по умолчанию
 
-Скрипт установки **генерирует** пароль и записывает его в файл на сервере:
+На пустой установке создаётся первый вход:
 
-```bash
-sudo cat /root/amnezia-admin.initial-password
-```
+- логин: **`admin`**
+- пароль: **`admin`**
 
-Войдите в панель этим паролем и сразу смените его в блоке **«Сменить пароль»**.
+Смените пароль сразу после входа в блоке **«Сменить пароль»**.
 
 ### Свой пароль при установке
 
@@ -317,23 +303,11 @@ ADMIN_PASSWORD='ВашНадёжныйПароль' curl -fsSL https://raw.githu
 
 После первого успешного старта переменную `ADMIN_PASSWORD` из команды `docker run` убирайте — пароль уже в томе `DATA_DIR`.
 
-### Пароль по умолчанию из документации (только тест / лаборатория)
-
-Если задать при установке **`ALLOW_DEFAULT_PASSWORD=1`**, контейнер создаёт пароль из README:
-
-- **Логин в веб:** пароль по умолчанию **`AmneziaAdmin!ChangeMe`**
-
-Его можно переопределить переменной **`DEFAULT_ADMIN_PASSWORD`** в окружении контейнера до первого создания `password.hash`.
-
-На продакшене этот режим **не рекомендуется**.
-
 ### Ручной Docker без скрипта
 
-Нужны том `-v /путь/данных:/data` и **один из** вариантов:
+Нужен том `-v /путь/данных:/data`.
 
-1. `-e ADMIN_PASSWORD=...` при **первом** запуске (файла `password.hash` ещё нет);
-2. `-e ALLOW_DEFAULT_PASSWORD=1` — см. пароль выше;
-3. готовый файл `password.hash` в томе (продвинутый сценарий).
+Если `password.hash` ещё нет, контейнер создаст `admin/admin`. Для своего первого пароля передайте `-e ADMIN_PASSWORD=...`. Для продвинутого сценария можно заранее положить готовый `password.hash` в том.
 
 ---
 
