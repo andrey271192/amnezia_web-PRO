@@ -970,8 +970,8 @@ async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
   const defaultPort = rt.profile.wgBinary === "awg" ? 55424 : 51820;
   const port = Number.isFinite(portNum) && portNum > 0 ? portNum : defaultPort;
 
-  const dns1 = String(pickLc(lc, "dns1") || process.env.CLIENT_EXPORT_DNS1?.trim() || "8.8.8.8");
-  const dns2 = String(pickLc(lc, "dns2") || process.env.CLIENT_EXPORT_DNS2?.trim() || "8.8.4.4");
+  const dns1 = String(pickLc(lc, "dns1") || process.env.CLIENT_EXPORT_DNS1?.trim() || "1.1.1.1");
+  const dns2 = String(pickLc(lc, "dns2") || process.env.CLIENT_EXPORT_DNS2?.trim() || "1.0.0.1");
   const peerAllowed = formatExportAllowedIps(lc);
   const keepAlive = String(pickLc(lc, "persistent_keep_alive", "persistentKeepAlive") || "25");
   const mtuVal = pickLc(lc, "mtu", "MTU");
@@ -1004,6 +1004,13 @@ async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
     const I3 = String(pickLc(lc, "I3", "special_junk_3", "specialJunk3") ?? AWG_EXPORT_DEFAULTS.I3);
     const I4 = String(pickLc(lc, "I4", "special_junk_4", "specialJunk4") ?? AWG_EXPORT_DEFAULTS.I4);
     const I5 = String(pickLc(lc, "I5", "special_junk_5", "specialJunk5") ?? AWG_EXPORT_DEFAULTS.I5);
+    const iLines = [
+      ["I1", I1], ["I2", I2], ["I3", I3], ["I4", I4], ["I5", I5],
+    ]
+      .filter(([, v]) => String(v ?? "").trim() !== "")
+      .map(([k, v]) => `${k} = ${v}`)
+      .join("\n");
+    const iBlock = iLines ? `${iLines}\n` : "";
 
     return `[Interface]
 Address = ${tunnelIp}/32
@@ -1020,12 +1027,7 @@ H1 = ${H1}
 H2 = ${H2}
 H3 = ${H3}
 H4 = ${H4}
-I1 = ${I1}
-I2 = ${I2}
-I3 = ${I3}
-I4 = ${I4}
-I5 = ${I5}
-${mtuLine}[Peer]
+${iBlock}${mtuLine}[Peer]
 PublicKey = ${String(serverPub).trim()}
 PresharedKey = ${String(psk).trim()}
 AllowedIPs = ${peerAllowed}
