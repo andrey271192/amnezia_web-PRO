@@ -297,6 +297,35 @@ else
   echo "→ Лендинг пропущен (SKIP_LANDING=1 или нет каталога landing)."
 fi
 
+# ── Диагностика AmneziaWG: что увидит панель ──────────────────────────────
+echo ""
+echo "── Проверка AmneziaWG ──"
+__awg_running="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^amnezia-?awg|amnezia.*wg|awg' || true)"
+__awg_with_conf=""
+for __c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+  if docker exec "${__c}" sh -c 'test -f /opt/amnezia/awg/awg0.conf || test -f /opt/amnezia/awg/wg0.conf' 2>/dev/null; then
+    __awg_with_conf="${__awg_with_conf} ${__c}"
+  fi
+done
+__awg_with_conf="$(echo "${__awg_with_conf}" | xargs 2>/dev/null || true)"
+
+if [[ -n "${__awg_with_conf}" ]]; then
+  echo "✓ Найдены контейнеры AmneziaWG: ${__awg_with_conf}"
+  echo "  Панель подхватит их автоматически (рантайм-обнаружение) — ручной AWG_PROFILES не нужен."
+  for __c in ${__awg_with_conf}; do
+    __cnt="$(docker exec "${__c}" sh -c 'cat /opt/amnezia/awg/clientsTable 2>/dev/null' 2>/dev/null | grep -c clientId || true)"
+    __prt="$(docker exec "${__c}" sh -c 'grep -h ListenPort /opt/amnezia/awg/*.conf 2>/dev/null' 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)"
+    echo "    • ${__c}: порт ${__prt:-?}/udp, клиентов в таблице: ${__cnt:-0}"
+  done
+else
+  echo "⚠ Не найдено ни одного контейнера AmneziaWG (нет /opt/amnezia/awg/*.conf ни в одном контейнере)."
+  echo "  Это НОРМАЛЬНО для чистого VPS. Дальше есть два пути:"
+  echo "    1) Развернуть AmneziaWG прямо из панели: раздел «Протоколы / инстансы» → выбрать вариант и порт → «Развернуть инстанс»."
+  echo "    2) Поставить сервер приложением Amnezia на этот VPS — панель подхватит контейнер сама."
+  echo "  Пока сервера нет, список клиентов будет пустым и создание клиента вернёт ошибку «контейнер не найден» — это ожидаемо."
+fi
+echo "────────────────────────"
+
 echo ""
 echo "=== Готово ==="
 echo "Админ-панель: http://${IP:-SERVER_IP}:${HOST_PORT}"
