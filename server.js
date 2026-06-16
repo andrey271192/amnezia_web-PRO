@@ -450,7 +450,7 @@ async function dockerRestartContainer(container) {
 
 async function warpFileExists(rt, remotePath) {
   try {
-    await execDocker(["exec", rt.profile.container, "test", "-f", remotePath]);
+    await execDocker(["exec", await rt.resolveContainer(), "test", "-f", remotePath]);
     return true;
   } catch {
     return false;
@@ -459,7 +459,7 @@ async function warpFileExists(rt, remotePath) {
 
 async function warpInterfaceUp(rt) {
   try {
-    await execDocker(["exec", rt.profile.container, "ip", "addr", "show", "warp"]);
+    await execDocker(["exec", await rt.resolveContainer(), "ip", "addr", "show", "warp"]);
     return true;
   } catch {
     return false;
@@ -497,7 +497,7 @@ ip route flush table 100 2>/dev/null || true
 exit 0
 `;
   try {
-    await dockerExecStdin(rt.profile.container, sh);
+    await dockerExecStdin(await rt.resolveContainer(), sh);
   } catch {
     /* ignore */
   }
@@ -583,7 +583,7 @@ async function warpPatchStartSh(rt, ips) {
     "fi",
     "",
   ].join("\n");
-  await dockerExecStdin(rt.profile.container, remote);
+  await dockerExecStdin(await rt.resolveContainer(), remote);
 }
 
 async function warpPersistAndRestart(rt, selectedIps) {
@@ -680,25 +680,87 @@ function peerUsesWarp(peer, selectedSet) {
   return false;
 }
 
+async function listRunningContainerNames() {
+  try {
+    const { stdout } = await execDocker(["ps", "--format", "{{.Names}}"]);
+    return stdout.split("\n").map((x) => x.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function containerHasFile(name, filePath) {
+  try {
+    await execDocker(["exec", name, "test", "-f", filePath]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Find a running container that actually holds the AmneziaWG config file.
+// Lets the panel work even if AWG_CONTAINER points at the wrong name
+// (e.g. configured "amnezia-awg" but Amnezia created "amnezia-awg2").
+async function discoverAwgContainer(confPath, preferredName) {
+  const names = await listRunningContainerNames();
+  const score = (n) => {
+    if (preferredName && n === preferredName) return 0;
+    if (/^amnezia-?awg/i.test(n)) return 1;
+    if (/^amnezia/i.test(n)) return 2;
+    if (/awg|wireguard|wg/i.test(n)) return 3;
+    return 4;
+  };
+  const ordered = [...names].sort((a, b) => score(a) - score(b));
+  for (const n of ordered) {
+    if (await containerHasFile(n, confPath)) return n;
+  }
+  return null;
+}
+
 function createRuntime(profile) {
-  const container = profile.container;
+  let resolvedContainer = null;
   const confPath = profile.confPath;
   const clientsPath = profile.clientsPath;
   const iface = profile.iface;
   const wgBinary = profile.wgBinary;
   const pskPath = profile.pskPath;
 
+  async function resolveContainer() {
+    if (resolvedContainer) return resolvedContainer;
+    if (profile.container && (await containerHasFile(profile.container, confPath))) {
+      resolvedContainer = profile.container;
+      return resolvedContainer;
+    }
+    const found = await discoverAwgContainer(confPath, profile.container);
+    if (found) {
+      resolvedContainer = found;
+      if (found !== profile.container) {
+        console.log(
+          `\u2192 AWG container авто: «${found}» (профиль «${profile.label || profile.id}» указывал «${profile.container}»)`,
+        );
+      }
+      return resolvedContainer;
+    }
+    const running = (await listRunningContainerNames()).join(", ") || "(нет запущенных)";
+    throw new Error(
+      `Контейнер AmneziaWG не найден. Профиль указывает «${profile.container}», но контейнера с таким именем нет и ни в одном запущенном нет файла ${confPath}. Запущенные контейнеры: ${running}. Проверьте, что инстанс Amnezia запущен, или задайте AWG_CONTAINER/AWG_PROFILES.`,
+    );
+  }
+
   async function dockerExec(cmd) {
+    const container = await resolveContainer();
     const { stdout, stderr } = await execDocker(["exec", container, "sh", "-c", cmd]);
     return stdout + stderr;
   }
 
   async function dockerReadFile(remotePath) {
+    const container = await resolveContainer();
     const { stdout } = await execDocker(["exec", container, "cat", remotePath]);
     return stdout;
   }
 
   async function dockerWriteFile(remotePath, content) {
+    const container = await resolveContainer();
     await execDocker(
       [
         "exec",
@@ -749,6 +811,7 @@ function createRuntime(profile) {
 
   return {
     profile,
+    resolveContainer,
     dockerExec,
     dockerReadFile,
     dockerWriteFile,
@@ -1785,7 +1848,7 @@ app.post("/api/warp/host-setup", requireAuth, requireProTier, async (req, res) =
     return res.status(400).json({ error: "Ожидается cmd: install или uninstall" });
   }
   const rt = runtimeForRequest(req);
-  const container = String(rt.profile.container || "").trim();
+  const container = String((await rt.resolveContainer()) || "").trim();
   if (!/^[a-zA-Z0-9_.-]+$/.test(container)) {
     return res.status(400).json({ error: "Некорректное имя контейнера в профиле AWG" });
   }
@@ -1941,7 +2004,7 @@ app.get("/api/clients", requireAuth, async (req, res) => {
     res.json({
       profileId: rt.profile.id,
       profileLabel: rt.profile.label,
-      container: rt.profile.container,
+      container: (await rt.resolveContainer().catch(() => rt.profile.container)),
       protocol: "AmneziaWG",
       peerCount: conf.peers.length,
       clients: rows,
