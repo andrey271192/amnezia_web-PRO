@@ -1,6 +1,6 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache docker-cli openssh-client sshpass
+RUN apk add --no-cache docker-cli openssh-client sshpass bash iproute2 coreutils
 
 RUN mkdir -p /data && chmod 700 /data
 
@@ -10,6 +10,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY server.js ./server.js
+COPY scripts ./scripts
 COPY public ./public
 
 ENV NODE_ENV=production

@@ -80,6 +80,7 @@ if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
 fi
 
 mkdir -p "${DATA_DIR}"
+mkdir -p /opt/amnezia-instances
 
 # При повторном запуске не менять внешний порт панели, если не указали HOST_PORT явно (по умолчанию 8080).
 PREV_HOST_PORT=""
@@ -276,6 +277,7 @@ docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
   -p "${HOST_PORT}:3980" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${DATA_DIR}:/data" \
+  -v /opt/amnezia-instances:/opt/amnezia-instances \
   "${RUN_ENV[@]}" \
   amnezia-admin:latest
 

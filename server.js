@@ -135,8 +135,73 @@ function parseProfilesFromEnv() {
   }
 }
 
-const PROFILES = parseProfilesFromEnv();
-if (!PROFILES.length) {
+const ENV_PROFILES = parseProfilesFromEnv();
+
+const INSTANCES_DIR = process.env.INSTANCES_DIR || "/opt/amnezia-instances";
+const INSTANCES_FILE = `${process.env.DATA_DIR || "/data"}/instances.json`;
+const INSTANCE_SCRIPT = `${process.env.APP_DIR || "/app"}/scripts/awg-instance.sh`;
+
+const INSTANCE_VARIANTS = {
+  awg2: {
+    label: "AmneziaWG 2.0",
+    desc: "Новая версия протокола на основе awg-go. Расширенная обфускация (S3, S4).",
+    iface: "awg0", binary: "awg",
+  },
+  awg: {
+    label: "AmneziaWG",
+    desc: "Версия протокола на основе awg-go. Обфускация S1, S2.",
+    iface: "awg0", binary: "awg",
+  },
+  legacy: {
+    label: "AmneziaWG Legacy",
+    desc: "Оригинальная версия на ядре WireGuard. Совместима с клиентами старых версий.",
+    iface: "wg0", binary: "wg",
+  },
+};
+
+function loadManagedProfiles() {
+  try {
+    const raw = fs.readFileSync(INSTANCES_FILE, "utf-8");
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map((m) => ({
+      id: String(m.id),
+      label: String(m.label || m.id),
+      container: String(m.container || m.id),
+      confPath: String(m.confPath || `/opt/amnezia/awg/${m.iface || "awg0"}.conf`),
+      clientsPath: String(m.clientsPath || "/opt/amnezia/awg/clientsTable"),
+      iface: String(m.iface || "awg0"),
+      wgBinary: String(m.wgBinary || "awg"),
+      pskPath: String(m.pskPath || "/opt/amnezia/awg/wireguard_psk.key"),
+      warpDir: "/opt/warp",
+      warpConf: "/opt/warp/warp.conf",
+      warpClientsList: "/opt/warp/clients.list",
+      startScript: "/opt/amnezia/awg/start.sh",
+      managed: true,
+      variant: String(m.variant || "awg2"),
+      port: Number(m.port) || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function saveManagedProfiles(list) {
+  fs.mkdirSync(path.dirname(INSTANCES_FILE), { recursive: true });
+  fs.writeFileSync(INSTANCES_FILE, JSON.stringify(list, null, 2));
+}
+
+// Effective profile set = env profiles + managed instances (deduped by id).
+function getProfiles() {
+  const managed = loadManagedProfiles();
+  const seen = new Set(ENV_PROFILES.map((p) => p.id));
+  const out = [...ENV_PROFILES];
+  for (const m of managed) if (!seen.has(m.id)) { out.push(m); seen.add(m.id); }
+  return out;
+}
+
+const PROFILES = ENV_PROFILES; // boot-time check below uses env only
+if (!ENV_PROFILES.length) {
   console.error("Нет ни одного профиля AWG: укажите container в AWG_PROFILES или переменные по умолчанию.");
   process.exit(1);
 }
@@ -363,7 +428,7 @@ function runtimeFromExportRequest(req) {
     req.method === "POST" && typeof req.body?.profileId === "string" ? req.body.profileId.trim() : "";
   const pid = qPid || bodyPid;
   if (pid) {
-    const p = PROFILES.find((x) => x.id === pid);
+    const p = getProfiles().find((x) => x.id === pid);
     if (p) return createRuntime(p);
   }
   return runtimeForRequest(req);
@@ -826,7 +891,8 @@ function createRuntime(profile) {
 
 function runtimeForRequest(req) {
   const wanted = getProfileCookie(req);
-  const profile = PROFILES.find((p) => p.id === wanted) || PROFILES[0];
+  const all = getProfiles();
+  const profile = all.find((p) => p.id === wanted) || all[0];
   return createRuntime(profile);
 }
 
@@ -1271,7 +1337,7 @@ async function processScheduledDisconnects(rt) {
 }
 
 async function processAllScheduledDisconnects() {
-  for (const profile of PROFILES) {
+  for (const profile of getProfiles()) {
     await processScheduledDisconnects(createRuntime(profile));
   }
 }
@@ -1918,7 +1984,7 @@ app.post("/api/change-password", requireAuth, (req, res) => {
 app.get("/api/protocols", requireAuth, (req, res) => {
   const rt = runtimeForRequest(req);
   const hintSingle =
-    PROFILES.length < 2
+    getProfiles().length < 2
       ? IS_COMMUNITY
         ? "Один инстанс в интерфейсе. Несколько контейнеров и профиль AWG_PROFILES — в полной панели PRO."
         : "Сейчас один инстанс: при установке не передали AWG_PROFILES или не восстановился снимок. Задайте JSON профилей и запустите install.sh — он сохранится в /root/amnezia-admin.awg-profiles.json."
@@ -1926,12 +1992,12 @@ app.get("/api/protocols", requireAuth, (req, res) => {
   res.json({
     currentId: rt.profile.id,
     currentLabel: rt.profile.label,
-    profiles: PROFILES.map((p) => ({
+    profiles: getProfiles().map((p) => ({
       id: p.id,
       label: p.label,
       container: p.container,
     })),
-    singleProfile: PROFILES.length < 2,
+    singleProfile: getProfiles().length < 2,
     profilesPersistHint: hintSingle,
     edition: editionPayload(),
   });
@@ -1939,7 +2005,7 @@ app.get("/api/protocols", requireAuth, (req, res) => {
 
 app.post("/api/protocol", requireAuth, (req, res) => {
   const id = req.body?.profileId;
-  if (typeof id !== "string" || !PROFILES.some((p) => p.id === id)) {
+  if (typeof id !== "string" || !getProfiles().some((p) => p.id === id)) {
     res.status(400).json({ error: "Неизвестный profileId" });
     return;
   }
@@ -2034,9 +2100,9 @@ async function serveClientConfigExport(req, res) {
 
   let rt;
   if (tokenOk) {
-    if (PROFILES.length > 1) {
+    if (getProfiles().length > 1) {
       const pid = typeof req.query.profileId === "string" ? req.query.profileId.trim() : "";
-      const p = PROFILES.find((x) => x.id === pid);
+      const p = getProfiles().find((x) => x.id === pid);
       if (!p) {
         res.status(400).json({
           error:
@@ -2046,7 +2112,7 @@ async function serveClientConfigExport(req, res) {
       }
       rt = createRuntime(p);
     } else {
-      rt = createRuntime(PROFILES[0]);
+      rt = createRuntime(getProfiles()[0]);
     }
   } else {
     rt = runtimeFromExportRequest(req);
@@ -2569,6 +2635,104 @@ if (fs.existsSync(pub)) {
     }),
   );
 }
+
+// ───────────────────────── Managed AmneziaWG instances ─────────────────────────
+function runInstanceScript(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bash", [INSTANCE_SCRIPT, ...args], {
+      env: { ...process.env, INSTANCES_DIR },
+    });
+    let out = "", err = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error((err || out || `exit ${code}`).trim()));
+    });
+  });
+}
+
+app.get("/api/instances", requireAuth, async (_req, res) => {
+  const managed = loadManagedProfiles();
+  const running = await listRunningContainerNames();
+  const items = [];
+  for (const m of managed) {
+    let peers = null;
+    if (running.includes(m.container)) {
+      try {
+        const out = (await execDocker(["exec", m.container, m.wgBinary, "show", m.iface, "peers"])).stdout || "";
+        peers = out.split("\n").map((x) => x.trim()).filter(Boolean).length;
+      } catch { peers = null; }
+    }
+    items.push({
+      id: m.id, label: m.label, variant: m.variant, port: m.port,
+      container: m.container,
+      running: running.includes(m.container),
+      peers,
+      variantMeta: INSTANCE_VARIANTS[m.variant] || null,
+    });
+  }
+  res.json({ instances: items, variants: INSTANCE_VARIANTS });
+});
+
+app.post("/api/instances/create", requireAuth, requireProTier, async (req, res) => {
+  const variant = String(req.body?.variant || "").trim();
+  const port = Number(req.body?.port);
+  if (!INSTANCE_VARIANTS[variant]) return res.status(400).json({ error: "Неизвестный вариант протокола." });
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return res.status(400).json({ error: "Некорректный порт (1–65535)." });
+  const name = `amnezia-${variant}-${port}`;
+  try {
+    const out = await runInstanceScript(["create", variant, String(port), name]);
+    const meta = INSTANCE_VARIANTS[variant];
+    const list = loadManagedProfiles();
+    if (!list.some((p) => p.id === name)) {
+      list.push({
+        id: name,
+        label: `${meta.label} :${port}`,
+        container: name,
+        confPath: `/opt/amnezia/awg/${meta.iface}.conf`,
+        clientsPath: "/opt/amnezia/awg/clientsTable",
+        iface: meta.iface,
+        wgBinary: meta.binary,
+        pskPath: "/opt/amnezia/awg/wireguard_psk.key",
+        variant, port,
+      });
+      saveManagedProfiles(list);
+    }
+    res.json({ ok: true, id: name, output: out.slice(0, 4000) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e).slice(0, 1500) });
+  }
+});
+
+app.post("/api/instances/delete", requireAuth, requireProTier, async (req, res) => {
+  const id = String(req.body?.id || "").trim();
+  const list = loadManagedProfiles();
+  const found = list.find((p) => p.id === id);
+  if (!found) return res.status(404).json({ error: "Инстанс не найден." });
+  try {
+    await runInstanceScript(["remove", id]);
+  } catch (e) {
+    console.warn("instance remove:", e);
+  }
+  saveManagedProfiles(list.filter((p) => p.id !== id));
+  res.json({ ok: true });
+});
+
+app.post("/api/instances/stop", requireAuth, requireProTier, async (req, res) => {
+  const id = String(req.body?.id || "").trim();
+  if (!loadManagedProfiles().some((p) => p.id === id)) return res.status(404).json({ error: "Инстанс не найден." });
+  try { await execDocker(["stop", id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+app.post("/api/instances/start", requireAuth, requireProTier, async (req, res) => {
+  const id = String(req.body?.id || "").trim();
+  if (!loadManagedProfiles().some((p) => p.id === id)) return res.status(404).json({ error: "Инстанс не найден." });
+  try { await execDocker(["start", id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 
 app.use((req, res) => {
   if (typeof req.path === "string" && req.path.startsWith("/api/")) {

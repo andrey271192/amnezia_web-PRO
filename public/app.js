@@ -627,6 +627,7 @@ loginForm.addEventListener("submit", async (ev) => {
     await loadProtocols();
     await loadTimeSyncCaps();
     await loadClients();
+    await loadInstances();
   } catch (e) {
     loginError.textContent = String(e.message || e);
   }
@@ -644,6 +645,7 @@ logoutBtn.addEventListener("click", async () => {
 
 refreshBtn.addEventListener("click", () => {
   loadClients();
+  loadInstances();
 });
 
 const cascadeForm = document.querySelector("#cascade-form");
@@ -654,6 +656,11 @@ if (cascadeForm) {
 const directForm = document.querySelector("#direct-form");
 if (directForm) {
   directForm.addEventListener("submit", (ev) => void downloadDirectConf(ev));
+}
+
+const instanceForm = document.querySelector("#instance-form");
+if (instanceForm) {
+  instanceForm.addEventListener("submit", (ev) => void createInstance(ev));
 }
 
 protoSelect.addEventListener("change", async () => {
@@ -1417,6 +1424,104 @@ async function downloadDirectConf(ev) {
   }
 }
 
+const VARIANT_META = {
+  awg2: { icon: "✨", title: "AmneziaWG 2.0", badge: "NEW" },
+  awg: { icon: "🔮", title: "AmneziaWG", badge: "" },
+  legacy: { icon: "📡", title: "AmneziaWG Legacy", badge: "" },
+};
+
+async function loadInstances() {
+  const grid = document.querySelector("#instances-grid");
+  if (!grid) return;
+  let data;
+  try {
+    data = await api("/api/instances");
+  } catch (e) {
+    grid.innerHTML = `<div class="muted">Не удалось загрузить инстансы: ${escapeHtmlSafe(String(e.message || e))}</div>`;
+    return;
+  }
+  const list = data.instances || [];
+  if (!list.length) {
+    grid.innerHTML = `<div class="muted instance-empty">Нет развёрнутых инстансов. Создайте первый формой ниже.</div>`;
+    return;
+  }
+  grid.innerHTML = list.map((i) => {
+    const m = VARIANT_META[i.variant] || { icon: "🛡", title: i.variant, badge: "" };
+    const status = i.running
+      ? `<span class="inst-status on">● РАБОТАЕТ</span>`
+      : `<span class="inst-status off">● ОСТАНОВЛЕН</span>`;
+    const toggle = i.running
+      ? `<button class="btn small ghost" data-act="stop" data-id="${i.id}">■ Стоп</button>`
+      : `<button class="btn small primary" data-act="start" data-id="${i.id}">▶ Старт</button>`;
+    const badge = m.badge ? `<span class="inst-badge">${m.badge}</span>` : "";
+    return `<div class="inst-card">
+      <div class="inst-card-head">
+        <div class="inst-ico">${m.icon}</div>
+        ${toggle}
+      </div>
+      <div class="inst-title">${escapeHtmlSafe(m.title)} ${badge}</div>
+      <div class="inst-desc muted">${escapeHtmlSafe(i.variantMeta?.desc || "")}</div>
+      <div class="inst-status-row">${status}</div>
+      <div class="inst-stats">
+        <div><span class="inst-stat-l">ПОРТ</span><span class="inst-stat-v">${i.port || "?"}/UDP</span></div>
+        <div><span class="inst-stat-l">ПОДКЛЮЧЕНИЯ</span><span class="inst-stat-v">${i.peers == null ? "—" : i.peers}</span></div>
+      </div>
+      <div class="inst-actions">
+        <button class="btn small ghost" data-act="use" data-id="${i.id}">Подключения</button>
+        <button class="btn small warn" data-act="delete" data-id="${i.id}" data-label="${escapeHtmlSafe(m.title)}">Удалить</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  grid.querySelectorAll("button[data-act]").forEach((b) => {
+    b.addEventListener("click", () => void instanceAction(b.dataset.act, b.dataset.id, b.dataset.label));
+  });
+}
+
+function escapeHtmlSafe(x) {
+  return String(x == null ? "" : x).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+async function instanceAction(act, id, label) {
+  try {
+    if (act === "stop") { await api("/api/instances/stop", { method: "POST", body: JSON.stringify({ id }) }); setStatus("Инстанс остановлен.", false); }
+    else if (act === "start") { await api("/api/instances/start", { method: "POST", body: JSON.stringify({ id }) }); setStatus("Инстанс запущен.", false); }
+    else if (act === "delete") {
+      if (!confirm(`Удалить инстанс «${label || id}» (${id}) вместе со всеми клиентами на нём?`)) return;
+      await api("/api/instances/delete", { method: "POST", body: JSON.stringify({ id }) });
+      setStatus("Инстанс удалён.", false);
+    } else if (act === "use") {
+      const sel = document.querySelector("#proto-select");
+      if (sel) { sel.value = id; sel.dispatchEvent(new Event("change")); }
+      document.querySelector("#users-panel")?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    await loadInstances();
+    await loadClients();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
+}
+
+async function createInstance(ev) {
+  ev.preventDefault();
+  const variant = document.querySelector("#instance-variant")?.value;
+  const port = Number(document.querySelector("#instance-port")?.value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) { setStatus("Укажите корректный порт (1–65535).", true); return; }
+  const btn = ev.target.querySelector("button[type=submit]");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Разворачиваю… (до минуты)"; }
+  try {
+    await api("/api/instances/create", { method: "POST", body: JSON.stringify({ variant, port }) });
+    setStatus("Инстанс развёрнут.", false);
+    const pe = document.querySelector("#instance-port"); if (pe) pe.value = "";
+    await loadInstances();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "＋ Развернуть инстанс"; }
+  }
+}
+
 async function renameClient(c) {
   const next = prompt(`Новое имя для «${c.name}»:`, c.name);
   if (next === null) return;
@@ -1533,6 +1638,7 @@ async function boot() {
     await loadProtocols();
     await loadTimeSyncCaps();
     await loadClients();
+    await loadInstances();
   } else {
     showLogin();
     loginPassword.focus();

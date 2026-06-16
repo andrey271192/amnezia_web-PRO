@@ -1178,3 +1178,26 @@ tr:last-child td {
   line-height: 1;
 }
 .actions a.btn.icon { text-decoration: none; }
+
+
+/* Managed instances */
+.instances-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.inst-card { background: var(--card, rgba(148,163,184,0.06)); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.inst-card-head { display: flex; align-items: center; justify-content: space-between; }
+.inst-ico { width: 44px; height: 44px; border-radius: 12px; background: rgba(124,92,255,0.14); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.inst-title { font-weight: 700; font-size: 1.05rem; }
+.inst-badge { font-size: 0.62rem; background: #7c5cff; color: #fff; border-radius: 999px; padding: 2px 7px; vertical-align: middle; letter-spacing: 0.05em; }
+.inst-desc { font-size: 0.82rem; line-height: 1.35; min-height: 2.4em; }
+.inst-status.on { color: #34c759; font-size: 0.72rem; font-weight: 700; }
+.inst-status.off { color: #ff9f0a; font-size: 0.72rem; font-weight: 700; }
+.inst-status-row { margin: 2px 0; }
+.inst-stats { display: flex; gap: 18px; margin: 4px 0; }
+.inst-stat-l { display: block; font-size: 0.62rem; color: var(--muted); letter-spacing: 0.06em; }
+.inst-stat-v { display: block; font-weight: 700; font-size: 0.95rem; }
+.inst-actions { display: flex; gap: 8px; margin-top: 6px; }
+.inst-actions .btn { flex: 1; }
+.instance-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 8px; }
+.instance-form-row { display: flex; flex-direction: column; gap: 4px; }
+.instance-form-row label { font-size: 0.75rem; color: var(--muted); }
+.instance-hint { font-size: 0.75rem; margin-top: 8px; }
+.instance-empty { padding: 12px; }

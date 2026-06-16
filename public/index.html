@@ -183,6 +183,35 @@
       </div>
     </details>
 
+    <details class="panel-fold" id="instances-panel" open>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Протоколы / инстансы</span>
+          <span class="muted fold-meta">Разверните AmneziaWG прямо из панели — без приложения Amnezia, с выбором порта</span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <div id="instances-grid" class="instances-grid"></div>
+        <form id="instance-form" class="instance-form">
+          <div class="instance-form-row">
+            <label for="instance-variant">Протокол</label>
+            <select id="instance-variant" class="form-select">
+              <option value="awg2">AmneziaWG 2.0 (рекомендуется)</option>
+              <option value="awg">AmneziaWG</option>
+              <option value="legacy">AmneziaWG Legacy</option>
+            </select>
+          </div>
+          <div class="instance-form-row">
+            <label for="instance-port">Порт (UDP)</label>
+            <input id="instance-port" type="number" min="1" max="65535" placeholder="напр. 51820" autocomplete="off">
+          </div>
+          <button type="submit" class="btn primary">＋ Развернуть инстанс</button>
+        </form>
+        <p class="muted instance-hint">Создаёт серверный контейнер AmneziaWG из публичного образа, генерирует ключи и NAT. Затем в «Пользователях» выберите инстанс и создавайте клиентов.</p>
+      </div>
+    </details>
+
     <details class="panel-fold" id="direct-panel" open>
       <summary class="fold-summary">
         <span class="fold-arrow" aria-hidden="true"></span>
