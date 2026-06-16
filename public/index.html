@@ -183,6 +183,34 @@
       </div>
     </details>
 
+    <details class="panel-fold" id="direct-panel" open>
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Новый клиент</span>
+          <span class="muted fold-meta">Прямое подключение к этому серверу — Endpoint = публичный IP этого VPS</span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <div class="muted cascade-guide">
+          <p class="cascade-intro">
+            <strong>Обычное подключение.</strong> Создаёт нового клиента AmneziaWG и сразу скачивает файл
+            <code class="inline">.conf</code>, где <strong>Endpoint указывает на этот сервер напрямую</strong>.
+            Импортируйте файл в приложение Amnezia на телефоне или ПК. IP в туннеле подберётся автоматически.
+          </p>
+        </div>
+        <form id="direct-form" class="cascade-form">
+          <label for="direct-name">Имя клиента</label>
+          <input id="direct-name" type="text" placeholder="Например iPhone Андрей" autocomplete="off">
+
+          <label for="direct-tunnel-ip">IP в VPN-туннеле (необязательно)</label>
+          <input id="direct-tunnel-ip" type="text" placeholder="Пусто — подберём свободный в подсети" autocomplete="off">
+
+          <button type="submit" class="btn primary">Создать и скачать .conf</button>
+        </form>
+      </div>
+    </details>
+
     <details class="panel-fold cascade-panel" id="cascade-panel" open>
       <summary class="fold-summary">
         <span class="fold-arrow" aria-hidden="true"></span>

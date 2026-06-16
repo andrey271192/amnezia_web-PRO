@@ -145,6 +145,17 @@ if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
   fi
 fi
 
+# Авто-определение единственного контейнера amnezia-awg* (например amnezia-awg2 —
+# дефолт Amnezia для AWG 2.0), если AWG_CONTAINER и AWG_PROFILES не заданы вручную.
+if [[ -z "${AWG_CONTAINER:-}" ]] && [[ -z "${AWG_PROFILES:-}" ]]; then
+  __awg_names="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^amnezia-awg' || true)"
+  __awg_names_count="$(printf '%s\n' "${__awg_names}" | grep -c . || true)"
+  if [[ "${__awg_names_count}" == "1" ]]; then
+    AWG_CONTAINER="$(printf '%s\n' "${__awg_names}" | head -n1)"
+    echo "→ AWG_CONTAINER авто-определён: ${AWG_CONTAINER}"
+  fi
+fi
+
 if [[ -z "${AWG_PROFILES:-}" ]]; then
   __awg_multi_count="$(
     docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { c++ } END { print c + 0 }' | tr -d '[:space:]'
@@ -212,6 +223,14 @@ for __warp_var in WARP_DIR WARP_CONF_PATH WARP_CLIENTS_LIST AMNEZIA_START_SCRIPT
     RUN_ENV+=( -e "${__warp_var}=${!__warp_var}" )
   fi
 done
+
+if [[ -z "${CLIENT_CONFIG_ENDPOINT:-}" ]]; then
+  __pub_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  if [[ -n "${__pub_ip}" ]]; then
+    CLIENT_CONFIG_ENDPOINT="${__pub_ip}"
+    echo "→ CLIENT_CONFIG_ENDPOINT авто: ${CLIENT_CONFIG_ENDPOINT} (можно переопределить переменной окружения)"
+  fi
+fi
 
 for __export_var in CLIENT_CONFIG_ENDPOINT CLIENT_EXPORT_DNS1 CLIENT_EXPORT_DNS2 EXPORT_CONFIG_SECRET; do
   if [[ -n "${!__export_var:-}" ]]; then

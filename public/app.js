@@ -651,6 +651,11 @@ if (cascadeForm) {
   cascadeForm.addEventListener("submit", (ev) => void downloadCascadeConf(ev));
 }
 
+const directForm = document.querySelector("#direct-form");
+if (directForm) {
+  directForm.addEventListener("submit", (ev) => void downloadDirectConf(ev));
+}
+
 protoSelect.addEventListener("change", async () => {
   try {
     setStatus("Смена инстанса…", false);
@@ -1342,6 +1347,58 @@ async function downloadCascadeConf(ev) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    setStatus("Клиент добавлен на сервер, .conf скачан. Обновите таблицу.", false);
+    await loadClients();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
+}
+
+async function downloadDirectConf(ev) {
+  ev.preventDefault();
+  const nameEl = document.querySelector("#direct-name");
+  const tunnelEl = document.querySelector("#direct-tunnel-ip");
+  const body = {};
+  const nm = nameEl?.value.trim();
+  if (nm) body.clientName = nm;
+  const tip = tunnelEl?.value.trim();
+  if (tip) body.tunnelIp = tip;
+  const pid = currentProfileIdValue();
+  if (pid) body.profileId = pid;
+  try {
+    setStatus("Создаю клиента на сервере и собираю .conf…", false);
+    const res = await fetch("/api/clients/create", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = typeof j.error === "string" ? j.error : msg;
+      } catch {
+        /* raw */
+      }
+      throw new Error(msg);
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (nm || "client")
+      .replace(/[^\w\u0400-\u04FF\-]+/g, "_")
+      .slice(0, 60);
+    a.href = url;
+    a.download = `amnezia-${safe}.conf`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (nameEl) nameEl.value = "";
+    if (tunnelEl) tunnelEl.value = "";
     setStatus("Клиент добавлен на сервер, .conf скачан. Обновите таблицу.", false);
     await loadClients();
   } catch (e) {
