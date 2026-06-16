@@ -656,7 +656,8 @@ table.clients-table {
 
 .clients-table td.actions {
   vertical-align: top;
-  min-width: 360px;
+  width: 1%;
+  white-space: nowrap;
 }
 
 table {
@@ -1162,3 +1163,18 @@ tr:last-child td {
   white-space: pre-wrap;
   font-size: 0.82rem;
 }
+
+
+.actions { gap: 0.3rem; flex-wrap: nowrap; }
+.actions .btn.icon {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+.actions a.btn.icon { text-decoration: none; }

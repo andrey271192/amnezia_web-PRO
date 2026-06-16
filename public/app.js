@@ -988,31 +988,31 @@ function renderRows(clients) {
       actTd.appendChild(lock);
     } else {
       if (c.activeInConf) {
-        actTd.appendChild(btn("Выключить", "btn small ghost", () => openDisableDialog(c)));
+        actTd.appendChild(iconBtn("⏻", "Выключить", "btn small ghost icon", () => openDisableDialog(c)));
       } else {
         actTd.appendChild(
-          btn("Включить", "btn small primary", () => mutate("/api/clients/enable", c.clientId))
+          iconBtn("▶", "Включить", "btn small primary icon", () => mutate("/api/clients/enable", c.clientId))
         );
       }
       if (c.exportAvailable) {
         const direct = document.createElement("a");
         direct.className = "btn small ghost";
         direct.href = clientExportGetUrl(c.clientId);
-        direct.textContent = "Прямая ссылка";
+        direct.textContent = "🔗"; direct.classList.add("icon");
         direct.rel = "noopener";
         direct.title =
           "Открыть в новой вкладке — скачается .conf, если вы авторизованы в этой панели (cookies).";
 
-        actTd.appendChild(btn("Скачать .conf", "btn small ghost", () => void downloadClientConfig(c)));
+        actTd.appendChild(iconBtn("⬇", "Скачать .conf", "btn small ghost icon", () => void downloadClientConfig(c)));
         actTd.appendChild(direct);
         actTd.appendChild(
-          btn("Копировать URL", "btn small ghost", async () => {
+          iconBtn("⧉", "Копировать URL", "btn small ghost icon", async () => {
             const ok = await copyTextToClipboard(clientExportGetUrl(c.clientId));
             setStatus(ok ? "Ссылка скопирована (вставьте в браузер, будучи залогиненным)." : "Не удалось скопировать.", !ok);
           }),
         );
       }
-      actTd.appendChild(btn("Удалить", "btn small warn", () => confirmDelete(c.name, c.clientId)));
+      actTd.appendChild(iconBtn("🗑", "Удалить", "btn small warn icon", () => confirmDelete(c.name, c.clientId)));
     }
 
     tr.append(nameTd, ipTd, stTd, offTd, actTd);
@@ -1025,6 +1025,17 @@ function btn(label, cls, onClick) {
   b.type = "button";
   b.className = cls;
   b.textContent = label;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function iconBtn(glyph, title, cls, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = cls;
+  b.textContent = glyph;
+  b.title = title;
+  b.setAttribute("aria-label", title);
   b.addEventListener("click", onClick);
   return b;
 }
