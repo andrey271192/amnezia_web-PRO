@@ -656,6 +656,7 @@ table.clients-table {
 
 .clients-table td.actions {
   vertical-align: top;
+  min-width: 360px;
 }
 
 table {
@@ -728,9 +729,16 @@ tr:last-child td {
 
 .actions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.4rem;
   justify-content: flex-end;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.actions .btn,
+.actions a.btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .export-missing-hint {
