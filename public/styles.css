@@ -1201,3 +1201,5 @@ tr:last-child td {
 .instance-form-row label { font-size: 0.75rem; color: var(--muted); }
 .instance-hint { font-size: 0.75rem; margin-top: 8px; }
 .instance-empty { padding: 12px; }
+
+.inst-src { font-size: 0.6rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; vertical-align: middle; }

@@ -2653,24 +2653,48 @@ function runInstanceScript(args) {
   });
 }
 
+function detectVariantFromHead(head, iface) {
+  if (iface === "wg0" || !/^S1\s*=/m.test(head)) return "legacy";
+  if (/^S3\s*=/m.test(head) || /^S4\s*=/m.test(head)) return "awg2";
+  return "awg";
+}
+
 app.get("/api/instances", requireAuth, async (_req, res) => {
-  const managed = loadManagedProfiles();
+  const managedIds = new Set(loadManagedProfiles().map((m) => m.id));
+  const profiles = getProfiles();
   const running = await listRunningContainerNames();
   const items = [];
-  for (const m of managed) {
+  for (const prof of profiles) {
+    const isManaged = managedIds.has(prof.id) || prof.managed === true;
+    let container = prof.container;
+    let runningNow = false;
     let peers = null;
-    if (running.includes(m.container)) {
-      try {
-        const out = (await execDocker(["exec", m.container, m.wgBinary, "show", m.iface, "peers"])).stdout || "";
-        peers = out.split("\n").map((x) => x.trim()).filter(Boolean).length;
-      } catch { peers = null; }
+    let port = prof.port || null;
+    let variant = prof.variant || "awg2";
+    try {
+      const rt = createRuntime(prof);
+      container = await rt.resolveContainer();
+      runningNow = running.includes(container);
+      if (runningNow) {
+        const { conf } = await rt.loadState();
+        peers = conf.peers.length;
+        const m = /^ListenPort\s*=\s*(\d+)/m.exec(conf.head);
+        if (m) port = Number(m[1]);
+        if (!prof.variant) variant = detectVariantFromHead(conf.head, prof.iface || "awg0");
+      }
+    } catch {
+      runningNow = container ? running.includes(container) : false;
     }
     items.push({
-      id: m.id, label: m.label, variant: m.variant, port: m.port,
-      container: m.container,
-      running: running.includes(m.container),
+      id: prof.id,
+      label: prof.label,
+      variant,
+      port,
+      container,
+      running: runningNow,
       peers,
-      variantMeta: INSTANCE_VARIANTS[m.variant] || null,
+      managed: isManaged,
+      variantMeta: INSTANCE_VARIANTS[variant] || null,
     });
   }
   res.json({ instances: items, variants: INSTANCE_VARIANTS });
@@ -2720,17 +2744,26 @@ app.post("/api/instances/delete", requireAuth, requireProTier, async (req, res) 
   res.json({ ok: true });
 });
 
+async function resolveProfileContainer(id) {
+  const prof = getProfiles().find((p) => p.id === id);
+  if (!prof) return null;
+  try { return await createRuntime(prof).resolveContainer(); }
+  catch { return prof.container || null; }
+}
+
 app.post("/api/instances/stop", requireAuth, requireProTier, async (req, res) => {
   const id = String(req.body?.id || "").trim();
-  if (!loadManagedProfiles().some((p) => p.id === id)) return res.status(404).json({ error: "Инстанс не найден." });
-  try { await execDocker(["stop", id]); res.json({ ok: true }); }
+  const container = await resolveProfileContainer(id);
+  if (!container) return res.status(404).json({ error: "Инстанс не найден." });
+  try { await execDocker(["stop", container]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 app.post("/api/instances/start", requireAuth, requireProTier, async (req, res) => {
   const id = String(req.body?.id || "").trim();
-  if (!loadManagedProfiles().some((p) => p.id === id)) return res.status(404).json({ error: "Инстанс не найден." });
-  try { await execDocker(["start", id]); res.json({ ok: true }); }
+  const container = await resolveProfileContainer(id);
+  if (!container) return res.status(404).json({ error: "Инстанс не найден." });
+  try { await execDocker(["start", container]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 

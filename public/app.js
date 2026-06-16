@@ -1454,12 +1454,18 @@ async function loadInstances() {
       ? `<button class="btn small ghost" data-act="stop" data-id="${i.id}">■ Стоп</button>`
       : `<button class="btn small primary" data-act="start" data-id="${i.id}">▶ Старт</button>`;
     const badge = m.badge ? `<span class="inst-badge">${m.badge}</span>` : "";
+    const srcTag = i.managed
+      ? ""
+      : `<span class="inst-src" title="Контейнер развёрнут приложением Amnezia">приложение Amnezia</span>`;
+    const delBtn = i.managed
+      ? `<button class="btn small warn" data-act="delete" data-id="${i.id}" data-label="${escapeHtmlSafe(m.title)}">Удалить</button>`
+      : "";
     return `<div class="inst-card">
       <div class="inst-card-head">
         <div class="inst-ico">${m.icon}</div>
         ${toggle}
       </div>
-      <div class="inst-title">${escapeHtmlSafe(m.title)} ${badge}</div>
+      <div class="inst-title">${escapeHtmlSafe(m.title)} ${badge} ${srcTag}</div>
       <div class="inst-desc muted">${escapeHtmlSafe(i.variantMeta?.desc || "")}</div>
       <div class="inst-status-row">${status}</div>
       <div class="inst-stats">
@@ -1468,7 +1474,7 @@ async function loadInstances() {
       </div>
       <div class="inst-actions">
         <button class="btn small ghost" data-act="use" data-id="${i.id}">Подключения</button>
-        <button class="btn small warn" data-act="delete" data-id="${i.id}" data-label="${escapeHtmlSafe(m.title)}">Удалить</button>
+        ${delBtn}
       </div>
     </div>`;
   }).join("");
