@@ -134,7 +134,9 @@ fi
 
 # AWG_PROFILES: не терять при апдейте без переменной (пропадает список «Инстанс»).
 AWG_PROFILE_SNAPSHOT="/root/amnezia-admin.awg-profiles.json"
+AWG_PROFILES_EXPLICIT=0
 if [[ -n "${AWG_PROFILES:-}" ]]; then
+  AWG_PROFILES_EXPLICIT=1
   umask 077
   printf '%s\n' "${AWG_PROFILES}" >"${AWG_PROFILE_SNAPSHOT}" 2>/dev/null || true
 elif [[ -n "${PREV_CONTAINER_ENV}" ]]; then
@@ -159,24 +161,21 @@ if [[ -z "${AWG_PROFILES:-}" ]] && [[ -f "${AWG_PROFILE_SNAPSHOT}" ]]; then
   fi
 fi
 
-# Авто-определение единственного контейнера amnezia-awg* (например amnezia-awg2 —
-# дефолт Amnezia для AWG 2.0), если AWG_CONTAINER и AWG_PROFILES не заданы вручную.
-if [[ -z "${AWG_CONTAINER:-}" ]] && [[ -z "${AWG_PROFILES:-}" ]]; then
-  __awg_names="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^amnezia-awg' || true)"
-  __awg_names_count="$(printf '%s\n' "${__awg_names}" | grep -c . || true)"
-  if [[ "${__awg_names_count}" == "1" ]]; then
-    AWG_CONTAINER="$(printf '%s\n' "${__awg_names}" | head -n1)"
-    echo "→ AWG_CONTAINER авто-определён: ${AWG_CONTAINER}"
-  fi
+__awg_names="$(docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { print }' | sort || true)"
+__awg_multi_count="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+__profile_container_count=0
+if [[ -n "${AWG_PROFILES:-}" ]]; then
+  __profile_container_count="$(printf '%s' "${AWG_PROFILES}" | grep -o '"container"' | wc -l | tr -d '[:space:]' || true)"
 fi
 
-if [[ -z "${AWG_PROFILES:-}" ]]; then
-  __awg_names="$(docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { print }' | sort || true)"
-  __awg_multi_count="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
-  if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -eq 1 ]] && [[ -z "${AWG_CONTAINER:-}" ]]; then
-    AWG_CONTAINER="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | head -n1)"
-    echo "→ AWG_CONTAINER авто-выбран: ${AWG_CONTAINER}"
-  elif [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
+if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -eq 1 ]] && [[ -z "${AWG_CONTAINER:-}" ]] && [[ -z "${AWG_PROFILES:-}" ]]; then
+  AWG_CONTAINER="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | head -n1)"
+  echo "→ AWG_CONTAINER авто-выбран: ${AWG_CONTAINER}"
+elif [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
+  if [[ -z "${AWG_PROFILES:-}" || ( "${AWG_PROFILES_EXPLICIT}" == "0" && "${__profile_container_count:-0}" -lt 2 ) ]]; then
+    if [[ -n "${AWG_PROFILES:-}" && "${__profile_container_count:-0}" -lt 2 ]]; then
+      echo "→ Найден старый одиночный AWG_PROFILES, но контейнеров amnezia-awg*: ${__awg_multi_count}. Пересобираю профили автоматически."
+    fi
     __awg_profiles="["
     __sep=""
     while IFS= read -r __awg_name; do
