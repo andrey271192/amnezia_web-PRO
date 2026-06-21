@@ -963,6 +963,19 @@ function stringifyClientsTable(rows) {
   return `${JSON.stringify(rows, null, 4)}\n`;
 }
 
+function clientRowId(row) {
+  return String(row?.clientId ?? row?.id ?? row?.publicKey ?? row?.client_id ?? "").trim();
+}
+
+function clientRowUserData(row) {
+  return row?.userData && typeof row.userData === "object" ? row.userData : {};
+}
+
+function clientDisplayNameFromRow(row, id) {
+  const ud = clientRowUserData(row);
+  return String(ud.clientName || row?.name || row?.clientName || `${id.slice(0, 10)}…`);
+}
+
 /** Совпадает с defaults Amnezia Desktop (protocolConstants awg, desktop MTU). */
 const AWG_EXPORT_DEFAULTS = {
   Jc: "3",
@@ -1173,7 +1186,7 @@ ${pskLine}AllowedIPs = ${allowedIps.join(", ")}
       );
     }
   }
-  const existingClientIdx = clients.findIndex((c) => c.clientId === pub);
+  const existingClientIdx = clients.findIndex((c) => clientRowId(c) === pub);
   const last_config = JSON.stringify(buildImportedLastConfig(normalized, sections, allowedIps));
   const now = new Date().toISOString();
   const name = normalizeImportName(clientName, `Импорт ${allowedIps[0].replace(/\/\d+$/, "")}`);
@@ -1292,7 +1305,7 @@ async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
     );
   }
 
-  const peer = conf.peers.find((p) => p.publicKey === row.clientId);
+  const peer = conf.peers.find((p) => p.publicKey === clientRowId(row));
   const tunnelIp = tunnelClientIpv4(peer || {}, lc, row);
 
   let serverPub = pickLc(lc, "server_pub_key", "serverPubKey");
@@ -1513,9 +1526,13 @@ async function disableClient(rt, clientId, ts) {
   }
   const nextPeers = conf.peers.filter((p) => p.publicKey !== clientId);
   const nextConfText = serializeAwgConf(conf.head, nextPeers);
-  const idx = clients.findIndex((c) => c.clientId === clientId);
-  if (idx === -1) throw new Error("Client not in clientsTable");
-  const ud = { ...(clients[idx].userData || {}) };
+  let idx = clients.findIndex((c) => clientRowId(c) === clientId);
+  const peerRow = { clientId, userData: {} };
+  if (idx === -1) {
+    clients.push(peerRow);
+    idx = clients.length - 1;
+  }
+  const ud = { ...clientRowUserData(clients[idx]) };
   ud.disabled = true;
   ud.disabledAt = ts;
   ud.lastDisconnectedAt = ts;
@@ -1535,10 +1552,11 @@ async function processScheduledDisconnects(rt) {
   for (const c of clients) {
     const ud = c.userData || {};
     const iso = ud.scheduledTunnelDisconnectAt;
-    if (!iso || !peerByKey.get(c.clientId)) continue;
+    const clientId = clientRowId(c);
+    if (!iso || !peerByKey.get(clientId)) continue;
     const t = new Date(iso).getTime();
     if (Number.isNaN(t) || t > now) continue;
-    due.push({ clientId: c.clientId, ts: new Date(iso).toISOString() });
+    due.push({ clientId, ts: new Date(iso).toISOString() });
   }
   if (!due.length) return;
   await rt.backupRemoteFiles();
@@ -2242,14 +2260,18 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       warpMeta.supported && warpMeta.installed ? warpMeta.selectedAllowedIps : [],
     );
     const { conf, clients, peerByKey } = await rt.loadState();
-    const rows = clients.map((c) => {
-      const id = c.clientId;
+    const rows = [];
+    const seenClientIds = new Set();
+    for (const c of clients) {
+      const id = clientRowId(c);
+      if (!id) continue;
+      seenClientIds.add(id);
       const peer = peerByKey.get(id);
-      const ud = c.userData || {};
+      const ud = clientRowUserData(c);
       const activeInConf = !!peer;
-      return {
+      rows.push({
         clientId: id,
-        name: ud.clientName || `${id.slice(0, 10)}…`,
+        name: clientDisplayNameFromRow(c, id),
         allowedIps: peer?.allowedIPs || ud.allowedIps || ud.preservedAllowedIPs || null,
         activeInConf,
         disabled: !activeInConf,
@@ -2265,8 +2287,33 @@ app.get("/api/clients", requireAuth, async (req, res) => {
           activeInConf &&
           peerUsesWarp(peer, warpSelected),
         exportAvailable: clientHasExportableLastConfig(c),
-      };
-    });
+        source: "clientsTable",
+      });
+    }
+    for (const peer of conf.peers) {
+      const id = peer.publicKey;
+      if (!id || seenClientIds.has(id)) continue;
+      rows.push({
+        clientId: id,
+        name: `Peer ${id.slice(0, 10)}…`,
+        allowedIps: peer.allowedIPs || null,
+        activeInConf: true,
+        disabled: false,
+        disabledAt: null,
+        lastDisconnectedAt: null,
+        scheduledTunnelDisconnectAt: null,
+        creationDate: null,
+        latestHandshake: null,
+        dataReceived: null,
+        dataSent: null,
+        warpEnabled:
+          Boolean(warpMeta.supported && warpMeta.installed) &&
+          peerUsesWarp(peer, warpSelected),
+        exportAvailable: false,
+        source: "peer",
+        missingClientTable: true,
+      });
+    }
     const warpOut =
       warpMeta.supported === false
         ? { supported: false }
@@ -2344,7 +2391,7 @@ async function serveClientConfigExport(req, res) {
   }
   try {
     const { conf, clients } = await rt.loadState();
-    const row = clients.find((c) => c.clientId === clientId);
+    const row = clients.find((c) => clientRowId(c) === clientId);
     if (!row) {
       res.status(404).json({ error: "Клиент не найден в clientsTable" });
       return;
@@ -2421,7 +2468,7 @@ app.post("/api/clients/create", requireAuth, requireProTier, async (req, res) =>
     }
     const serverPub = await wgPubkeyFromPrivate(rt, ifaceMap.PrivateKey);
     const { priv, pub } = await awgGenKeypair(rt);
-    if (clients.some((c) => c.clientId === pub)) {
+    if (clients.some((c) => clientRowId(c) === pub)) {
       res.status(409).json({ error: "Коллизия ключей — попробуйте ещё раз." });
       return;
     }
@@ -2530,7 +2577,7 @@ app.post("/api/clients/create-cascade", requireAuth, requireProTier, async (req,
 
     const serverPub = await wgPubkeyFromPrivate(rt, ifaceMap.PrivateKey);
     const { priv, pub } = await awgGenKeypair(rt);
-    if (clients.some((c) => c.clientId === pub)) {
+    if (clients.some((c) => clientRowId(c) === pub)) {
       res.status(409).json({ error: "Коллизия ключей — попробуйте ещё раз." });
       return;
     }
@@ -2734,7 +2781,7 @@ app.post("/api/clients/enable", requireAuth, requireProTier, async (req, res) =>
     if (existing) {
       return res.status(409).json({ error: "Peer already enabled" });
     }
-    const idx = clients.findIndex((c) => c.clientId === clientId);
+    const idx = clients.findIndex((c) => clientRowId(c) === clientId);
     if (idx === -1) {
       return res.status(404).json({ error: "Client not in clientsTable" });
     }
@@ -2786,10 +2833,14 @@ app.post("/api/clients/disconnect-date", requireAuth, requireProTier, async (req
   const scheduleTunnelDisconnect = Boolean(req.body?.scheduleTunnelDisconnect);
   try {
     const { clients, peerByKey } = await rt.loadState();
-    const idx = clients.findIndex((c) => c.clientId === clientId);
-    if (idx === -1) return res.status(404).json({ error: "Client not in clientsTable" });
+    let idx = clients.findIndex((c) => clientRowId(c) === clientId);
     const peer = peerByKey.get(clientId);
-    const ud = { ...(clients[idx].userData || {}) };
+    if (idx === -1) {
+      if (!peer) return res.status(404).json({ error: "Client not in clientsTable" });
+      clients.push({ clientId, userData: { allowedIps: peer.allowedIPs || "" } });
+      idx = clients.length - 1;
+    }
+    const ud = { ...clientRowUserData(clients[idx]) };
     if (scheduleTunnelDisconnect) {
       if (!peer) {
         return res.status(400).json({
@@ -2827,10 +2878,15 @@ app.post("/api/clients/rename", requireAuth, requireProTier, async (req, res) =>
     return res.status(400).json({ error: "Имя не длиннее 200 символов" });
   }
   try {
-    const { clients } = await rt.loadState();
-    const idx = clients.findIndex((c) => c.clientId === clientId);
-    if (idx === -1) return res.status(404).json({ error: "Client not in clientsTable" });
-    const ud = { ...(clients[idx].userData || {}), clientName: name };
+    const { clients, peerByKey } = await rt.loadState();
+    let idx = clients.findIndex((c) => clientRowId(c) === clientId);
+    if (idx === -1) {
+      const peer = peerByKey.get(clientId);
+      if (!peer) return res.status(404).json({ error: "Client not in clientsTable" });
+      clients.push({ clientId, userData: { allowedIps: peer.allowedIPs || "" } });
+      idx = clients.length - 1;
+    }
+    const ud = { ...clientRowUserData(clients[idx]), clientName: name };
     clients[idx] = { ...clients[idx], userData: ud };
     await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
     res.json({ ok: true });
@@ -2848,9 +2904,9 @@ app.post("/api/clients/delete", requireAuth, requireProTier, async (req, res) =>
     await rt.backupRemoteFiles();
     const { conf, clients } = await rt.loadState();
     const nextPeers = conf.peers.filter((p) => p.publicKey !== clientId);
-    const nextClients = clients.filter((c) => c.clientId !== clientId);
-    if (nextClients.length === clients.length) {
-      return res.status(404).json({ error: "Client not in clientsTable" });
+    const nextClients = clients.filter((c) => clientRowId(c) !== clientId);
+    if (nextClients.length === clients.length && nextPeers.length === conf.peers.length) {
+      return res.status(404).json({ error: "Client not found" });
     }
     const nextConfText = serializeAwgConf(conf.head, nextPeers);
     await rt.dockerWriteFile(rt.confPath, nextConfText);

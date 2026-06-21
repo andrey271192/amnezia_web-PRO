@@ -942,12 +942,15 @@ function renderRows(clients) {
         const hintFold = document.createElement("details");
         hintFold.className = "hint-mini";
         const sum = document.createElement("summary");
-        sum.textContent = "Нет готового .conf на сервере (last_config)";
+        sum.textContent = c.missingClientTable
+          ? "Peer найден в конфиге, но нет записи clientsTable"
+          : "Нет готового .conf на сервере (last_config)";
         hintFold.appendChild(sum);
         const exHint = document.createElement("p");
         exHint.className = "muted export-missing-hint";
-        exHint.textContent =
-          "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
+        exHint.textContent = c.missingClientTable
+          ? "Клиент активен в awg0.conf, но веб не знает имя и last_config. Вставьте его .conf в блок «Импорт клиента», чтобы восстановить запись и экспорт."
+          : "Конфиг с сервера недоступен (нет last_config). Создайте клиента с нужным Endpoint в блоке «Новый клиент под каскад» ниже или возьмите ключ из приложения Amnezia.";
         hintFold.appendChild(exHint);
         nameWrap.appendChild(hintFold);
       }
