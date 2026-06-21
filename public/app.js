@@ -14,6 +14,7 @@ const rowsEl = document.querySelector("#rows");
 const statusEl = document.querySelector("#status");
 const peerCountEl = document.querySelector("#peer-count");
 const wgShowEl = document.querySelector("#wg-show");
+const syncPeersBtn = document.querySelector("#sync-peers-btn");
 
 const warpPanel = document.querySelector("#warp-panel");
 const warpStatusLine = document.querySelector("#warp-status-line");
@@ -661,6 +662,10 @@ if (directForm) {
 const importForm = document.querySelector("#import-form");
 if (importForm) {
   importForm.addEventListener("submit", (ev) => void importClientConfig(ev));
+}
+
+if (syncPeersBtn) {
+  syncPeersBtn.addEventListener("click", () => void syncPeersFromConfig());
 }
 
 const instanceForm = document.querySelector("#instance-form");
@@ -1609,6 +1614,29 @@ async function mutate(path, clientId) {
   }
 }
 
+async function syncPeersFromConfig() {
+  if (syncPeersBtn) syncPeersBtn.disabled = true;
+  try {
+    setStatus("Подтягиваю клиентов из awg0.conf…", false);
+    const data = await api("/api/clients/sync-peers", {
+      method: "POST",
+      body: JSON.stringify(withCurrentProfile({})),
+    });
+    const added = Number(data.added || 0);
+    setStatus(
+      added
+        ? `Подтянуто клиентов: ${added}.`
+        : "Новых клиентов в awg0.conf нет — clientsTable уже совпадает.",
+      false,
+    );
+    await loadClients();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  } finally {
+    if (syncPeersBtn) syncPeersBtn.disabled = false;
+  }
+}
+
 async function confirmDelete(name, clientId) {
   const ok = confirm(
     `Удалить клиента «${name}»? Конфиг из приложения Amnezia перестанет совпадать с сервером.`
@@ -1627,7 +1655,15 @@ async function loadClients() {
     if (uiHidden.users) {
       peerCountEl.textContent = "";
       wgShowEl.textContent = "";
+      if (syncPeersBtn) syncPeersBtn.hidden = true;
     } else {
+      if (syncPeersBtn) {
+        syncPeersBtn.hidden = false;
+        syncPeersBtn.disabled = editionState.readOnlyClients;
+        syncPeersBtn.title = editionState.readOnlyClients
+          ? "Доступно в PRO"
+          : "Создать недостающие строки clientsTable из активных [Peer] текущего инстанса";
+      }
       peerCountEl.textContent = `${pref}${data.clients.length} в таблице · ${data.peerCount} peer`;
       wgShowEl.textContent = data.wgShow || "";
     }

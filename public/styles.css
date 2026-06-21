@@ -625,6 +625,18 @@ h1 {
   font-size: 0.88rem;
 }
 
+.users-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.75rem;
+}
+
+.users-tools-hint {
+  font-size: 0.82rem;
+}
+
 table.clients-table {
   table-layout: fixed;
 }

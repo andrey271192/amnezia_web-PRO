@@ -976,6 +976,11 @@ function clientDisplayNameFromRow(row, id) {
   return String(ud.clientName || row?.name || row?.clientName || `${id.slice(0, 10)}…`);
 }
 
+function defaultPeerClientName(peer) {
+  const ip = String(peer?.allowedIPs || "").split(",")[0].trim().replace(/\/\d+$/, "");
+  return ip ? `Клиент ${ip}` : `Peer ${String(peer?.publicKey || "").slice(0, 10)}…`;
+}
+
 /** Совпадает с defaults Amnezia Desktop (protocolConstants awg, desktop MTU). */
 const AWG_EXPORT_DEFAULTS = {
   Jc: "3",
@@ -2340,6 +2345,46 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       warp: warpOut,
       uiHidden: { ...effectiveUiHidden() },
       edition: editionPayload(),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/clients/sync-peers", requireAuth, requireProTier, async (req, res) => {
+  const rt = runtimeFromExportRequest(req);
+  try {
+    await rt.backupRemoteFiles();
+    const { conf, clients } = await rt.loadState();
+    const existing = new Set(clients.map(clientRowId).filter(Boolean));
+    const now = new Date().toISOString();
+    const added = [];
+    for (const peer of conf.peers) {
+      const id = peer.publicKey;
+      if (!id || existing.has(id)) continue;
+      const row = {
+        clientId: id,
+        userData: {
+          clientName: defaultPeerClientName(peer),
+          creationDate: now,
+          importedFromPeerAt: now,
+          allowedIps: peer.allowedIPs || "",
+        },
+      };
+      clients.push(row);
+      existing.add(id);
+      added.push({ clientId: id, name: row.userData.clientName, allowedIps: row.userData.allowedIps });
+    }
+    if (added.length) {
+      await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(clients));
+    }
+    res.json({
+      ok: true,
+      added: added.length,
+      totalPeers: conf.peers.length,
+      totalClientsTable: clients.length,
+      clients: added,
     });
   } catch (e) {
     console.error(e);
