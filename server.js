@@ -2229,7 +2229,7 @@ app.post("/api/protocol", requireAuth, (req, res) => {
 });
 
 app.get("/api/clients", requireAuth, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   try {
     let wgShow = "";
     try {
@@ -2701,7 +2701,7 @@ app.post("/api/warp/routing", requireAuth, requireProTier, async (req, res) => {
 });
 
 app.post("/api/clients/disable", requireAuth, requireProTier, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   let ts;
@@ -2724,7 +2724,7 @@ app.post("/api/clients/disable", requireAuth, requireProTier, async (req, res) =
 });
 
 app.post("/api/clients/enable", requireAuth, requireProTier, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   try {
@@ -2774,7 +2774,7 @@ AllowedIPs = ${ips}`;
 });
 
 app.post("/api/clients/disconnect-date", requireAuth, requireProTier, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   let iso;
@@ -2814,7 +2814,7 @@ app.post("/api/clients/disconnect-date", requireAuth, requireProTier, async (req
 });
 
 app.post("/api/clients/rename", requireAuth, requireProTier, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   const clientId = req.body?.clientId;
   const rawName = req.body?.name ?? req.body?.clientName;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
@@ -2841,7 +2841,7 @@ app.post("/api/clients/rename", requireAuth, requireProTier, async (req, res) =>
 });
 
 app.post("/api/clients/delete", requireAuth, requireProTier, async (req, res) => {
-  const rt = runtimeForRequest(req);
+  const rt = runtimeFromExportRequest(req);
   const clientId = req.body?.clientId;
   if (!clientId) return res.status(400).json({ error: "clientId required" });
   try {

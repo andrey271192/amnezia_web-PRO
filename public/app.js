@@ -434,18 +434,18 @@ dtOk.addEventListener("click", async () => {
       setStatus("Выполняю…", false);
       await api("/api/clients/disable", {
         method: "POST",
-        body: JSON.stringify({ clientId: dtClient.clientId, disconnectedAt: iso }),
+        body: JSON.stringify(withCurrentProfile({ clientId: dtClient.clientId, disconnectedAt: iso })),
       });
     } else {
       const scheduleTunnel = Boolean(dtScheduleTunnel.checked && dtClient.activeInConf);
       setStatus(scheduleTunnel ? "Сохраняю расписание отключения…" : "Сохраняю дату…", false);
       await api("/api/clients/disconnect-date", {
         method: "POST",
-        body: JSON.stringify({
+        body: JSON.stringify(withCurrentProfile({
           clientId: dtClient.clientId,
           disconnectedAt: iso,
           scheduleTunnelDisconnect: scheduleTunnel,
-        }),
+        })),
       });
     }
     dtDialog.close();
@@ -1247,6 +1247,16 @@ function currentProfileQuerySuffix() {
   return pid ? `&profileId=${encodeURIComponent(pid)}` : "";
 }
 
+function currentProfileQueryString() {
+  const pid = currentProfileIdValue();
+  return pid ? `?profileId=${encodeURIComponent(pid)}` : "";
+}
+
+function withCurrentProfile(body = {}) {
+  const pid = currentProfileIdValue();
+  return pid ? { ...body, profileId: pid } : body;
+}
+
 /** Прямая GET-ссылка на скачивание (работает в браузере с активной сессией панели). */
 function clientExportGetUrl(clientId) {
   const q = `clientId=${encodeURIComponent(clientId)}${currentProfileQuerySuffix()}`;
@@ -1576,7 +1586,7 @@ async function renameClient(c) {
     setStatus("Сохраняю имя…", false);
     await api("/api/clients/rename", {
       method: "POST",
-      body: JSON.stringify({ clientId: c.clientId, name: trimmed }),
+      body: JSON.stringify(withCurrentProfile({ clientId: c.clientId, name: trimmed })),
     });
     setStatus("Готово.", false);
     await loadClients();
@@ -1588,7 +1598,7 @@ async function renameClient(c) {
 async function mutate(path, clientId) {
   try {
     setStatus("Выполняю…", false);
-    await api(path, { method: "POST", body: JSON.stringify({ clientId }) });
+    await api(path, { method: "POST", body: JSON.stringify(withCurrentProfile({ clientId })) });
     setStatus("Готово.", false);
     await loadClients();
   } catch (e) {
@@ -1607,7 +1617,7 @@ async function confirmDelete(name, clientId) {
 async function loadClients() {
   try {
     setStatus("Загрузка…", false);
-    const data = await api("/api/clients");
+    const data = await api(`/api/clients${currentProfileQueryString()}`);
     applyEditionPayload(data);
     applyUiHiddenFromPayload(data);
     const pref = data.profileLabel ? `${data.profileLabel} · ` : "";
