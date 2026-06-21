@@ -37,6 +37,20 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/s
 
 Панель после установки открывается по **`http://IP:HOST_PORT`** (по умолчанию `:8080`). Первый вход: **логин `admin`, пароль `admin`**. Смените пароль сразу после входа.
 
+### Обновить/переустановить панель с GitHub
+
+Если `/opt/amnezia-admin` не git-репозиторий, это нормально: установщик скачивает свежий архив с GitHub, делает backup старой папки, сохраняет текущий порт и текущий Docker volume `/data`, затем пересобирает только контейнер панели **`amnezia-admin`**. Контейнеры AmneziaWG (`amnezia-awg`, `amnezia-awg2` и т.д.) не удаляются и не пересоздаются.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo bash
+```
+
+Если не нужен лендинг на порту 80:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/scripts/install.sh | sudo env SKIP_LANDING=1 bash
+```
+
 ### Переменные окружения и `sudo`
 
 Частая ошибка: задали **`AWG_PROFILES`**, **`ADMIN_PASSWORD`** или другую переменную из таблицы «в одной строке» перед `curl`, а затем выполнили **`curl … | sudo bash`**. По умолчанию **`sudo` не передаёт** это окружение в `bash`, который читает установочный скрипт с stdin: установщик **не увидит** переменные, переключатель **«Инстанс»** не появится.
@@ -80,7 +94,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `DATA_DIR` | `/opt/amnezia-admin-data` | Том с `password.hash` и сессией |
 | `HOST_PORT` | `8080` | Порт HTTP панели на хосте |
 | `AWG_CONTAINER` | `amnezia-awg` | Имя контейнера Amnezia WG |
-| `AWG_PROFILES` | _(нет)_ | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если задан — переключатель «Инстанс» в вебе. При однострочной установке с переменной в окружении нужен **`sudo -E bash`** или файл **`/root/amnezia-admin.awg-profiles.json`** — см. раздел **«Переменные окружения и sudo»** выше. В каждом объекте можно задать `warpDir`, `warpConf`, `warpClientsList`, `startScript` — см. раздел **Cloudflare WARP** |
+| `AWG_PROFILES` | auto | JSON-массив профилей: несколько контейнеров/путей (см. ниже). Если не задан и на VPS уже есть несколько контейнеров `amnezia-awg*`, установщик сам соберёт профили и сохранит их в `/root/amnezia-admin.awg-profiles.json`. Если задан вручную — переключатель «Инстанс» в вебе. При однострочной установке с переменной в окружении нужен **`sudo -E bash`** или файл **`/root/amnezia-admin.awg-profiles.json`** — см. раздел **«Переменные окружения и sudo»** выше. В каждом объекте можно задать `warpDir`, `warpConf`, `warpClientsList`, `startScript` — см. раздел **Cloudflare WARP** |
 | `WARP_DIR` | `/opt/warp` | В контейнере AWG: каталог для `warp.conf` и `clients.list` |
 | `WARP_CONF_PATH` | `{WARP_DIR}/warp.conf` | Нестандартный путь к конфигу WARP |
 | `WARP_CLIENTS_LIST` | `{WARP_DIR}/clients.list` | Список строк `10.8.x.x/32` — кому маршрутизировать трафик через интерфейс `warp` |
@@ -112,7 +126,7 @@ cd /opt/amnezia-admin && chmod +x scripts/install.sh && sudo SKIP_DOWNLOAD=1 bas
 | `MTPRO_PUBLISH_BIND` | `0.0.0.0` | Адрес bind на хосте для `-p` |
 | `MTPRO_PUBLIC_HOST` | _(нет)_ | Публичный IP/DNS для ссылки **`tg://proxy`**; можно вместо этого задать **`CLIENT_CONFIG_ENDPOINT`** |
 
-Переменная **`AWG_PROFILES`** при установке автоматически сохраняется в **`/root/amnezia-admin.awg-profiles.json`** на VPS; при следующем запуске `install.sh` без `AWG_PROFILES` значение подставляется из этого файла или из **старого контейнера** `amnezia-admin` перед его удалением — так переключатель «Инстанс» не пропадает после обновления панели.
+Переменная **`AWG_PROFILES`** при установке автоматически сохраняется в **`/root/amnezia-admin.awg-profiles.json`** на VPS; при следующем запуске `install.sh` без `AWG_PROFILES` значение подставляется из этого файла или из **старого контейнера** `amnezia-admin` перед его удалением — так переключатель «Инстанс» не пропадает после обновления панели. Если файла и переменной нет, но на VPS запущено несколько контейнеров **`amnezia-awg*`**, установщик сам создаёт профили по контейнерам.
 
 #### Несколько инстансов (AmneziaWG + Legacy и т.д.)
 
@@ -136,7 +150,7 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/amnezia_web-PRO/main/s
 
 Если в вебе пропал список **«Инстанс»**, смотрите раздел «Если пропал список Инстанс» в **[docs/panel-guide.md](docs/panel-guide.md)**.
 
-Если на хосте уже запущено **несколько** контейнеров с именами вида **`amnezia-awg*`**, а в панели по-прежнему один инстанс — задайте **`AWG_PROFILES`** (или файл **`/root/amnezia-admin.awg-profiles.json`**) и перезапустите установщик; при запуске **`install.sh`** без профилей в этом случае выводится предупреждение в консоль.
+Если на хосте уже запущено **несколько** контейнеров с именами вида **`amnezia-awg*`**, а в панели по-прежнему один инстанс — перезапустите установщик из GitHub. Он автоматически создаст **`AWG_PROFILES`** и сохранит файл **`/root/amnezia-admin.awg-profiles.json`**. Ручной JSON нужен только при нестандартных путях внутри контейнеров.
 
 ### Telegram MTProto‑прокси
 

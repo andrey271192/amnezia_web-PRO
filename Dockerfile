@@ -6,8 +6,8 @@ RUN mkdir -p /data && chmod 700 /data
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY server.js ./server.js
 COPY scripts ./scripts

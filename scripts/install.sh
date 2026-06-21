@@ -40,6 +40,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Preserve current container settings before replacing source tree. This makes
+# curl-based reinstall safe even when /opt/amnezia-admin is not a git checkout.
+PREV_HOST_PORT=""
+PREV_DATA_DIR=""
+PREV_CONTAINER_ENV=""
+if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+  __dock_port_out=""
+  __dock_port_out="$(docker port "${CONTAINER_NAME}" 3980/tcp 2>/dev/null)" || :
+  if [[ -n "${__dock_port_out}" ]]; then
+    PREV_HOST_PORT="$(printf '%s\n' "${__dock_port_out}" | head -n1 | awk -F: '{print $NF}')" || PREV_HOST_PORT=""
+  fi
+  PREV_DATA_DIR="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+  PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
+fi
+if [[ -n "${PREV_HOST_PORT}" && "${HOST_PORT}" == "8080" ]]; then
+  HOST_PORT="${PREV_HOST_PORT}"
+  echo "→ Уже запущен ${CONTAINER_NAME}: сохраняю внешний порт ${HOST_PORT} (укажите HOST_PORT=… чтобы сменить)."
+fi
+if [[ -n "${PREV_DATA_DIR}" && "${DATA_DIR}" == "/opt/amnezia-admin-data" ]]; then
+  DATA_DIR="${PREV_DATA_DIR}"
+  echo "→ Уже запущен ${CONTAINER_NAME}: сохраняю DATA_DIR ${DATA_DIR}."
+fi
+
 if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
   echo "→ Клонирование релиза ${GITHUB_REPO} (${BRANCH})..."
   echo "→ Скачивание tar.gz с GitHub (вывода может не быть 1–10 мин.; при блокировках задайте зеркало GITHUB_REPO_URL_OVERRIDE или см. CURL_MAX_TIME ниже)."
@@ -72,6 +95,11 @@ if [[ "${SKIP_DOWNLOAD:-}" != "1" ]]; then
     echo "Ошибка: распакованный архив пуст (${CURL_URL})."
     exit 1
   fi
+  if [[ -d "${INSTALL_DIR}" && "${AUTO_BACKUP_INSTALL:-1}" != "0" ]]; then
+    __install_backup="${INSTALL_DIR}.backup.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -a "${INSTALL_DIR}" "${__install_backup}" 2>/dev/null || true
+    echo "→ Backup старых исходников: ${__install_backup}"
+  fi
   rm -rf "${INSTALL_DIR}"
   mkdir -p "$(dirname "${INSTALL_DIR}")"
   mv "${__extracted_dir}" "${INSTALL_DIR}"
@@ -81,21 +109,6 @@ fi
 
 mkdir -p "${DATA_DIR}"
 mkdir -p /opt/amnezia-instances
-
-# При повторном запуске не менять внешний порт панели, если не указали HOST_PORT явно (по умолчанию 8080).
-PREV_HOST_PORT=""
-if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-  # Контейнер может быть остановлен — `docker port` тогда код ≠ 0; при pipefail без этого блока скрипт выходит молча.
-  __dock_port_out=""
-  __dock_port_out="$(docker port "${CONTAINER_NAME}" 3980/tcp 2>/dev/null)" || :
-  if [[ -n "${__dock_port_out}" ]]; then
-    PREV_HOST_PORT="$(printf '%s\n' "${__dock_port_out}" | head -n1 | awk -F: '{print $NF}')" || PREV_HOST_PORT=""
-  fi
-  if [[ -n "${PREV_HOST_PORT}" && "${HOST_PORT}" == "8080" ]]; then
-    HOST_PORT="${PREV_HOST_PORT}"
-    echo "→ Уже запущен ${CONTAINER_NAME}: сохраняю внешний порт ${HOST_PORT} (укажите HOST_PORT=… чтобы сменить)."
-  fi
-fi
 
 BOOT_PW=""
 PASS_FILE="/root/amnezia-admin.initial-password"
@@ -124,14 +137,14 @@ AWG_PROFILE_SNAPSHOT="/root/amnezia-admin.awg-profiles.json"
 if [[ -n "${AWG_PROFILES:-}" ]]; then
   umask 077
   printf '%s\n' "${AWG_PROFILES}" >"${AWG_PROFILE_SNAPSHOT}" 2>/dev/null || true
-elif docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+elif [[ -n "${PREV_CONTAINER_ENV}" ]]; then
   PREV_AWG_PROFILES=""
   while IFS= read -r __env_line; do
     if [[ "${__env_line}" == AWG_PROFILES=* ]]; then
       PREV_AWG_PROFILES="${__env_line#AWG_PROFILES=}"
       break
     fi
-  done < <(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}')
+  done <<<"${PREV_CONTAINER_ENV}"
   if [[ -n "${PREV_AWG_PROFILES}" ]]; then
     AWG_PROFILES="${PREV_AWG_PROFILES}"
     echo "→ AWG_PROFILES восстановлен из предыдущего контейнера ${CONTAINER_NAME}."
@@ -158,20 +171,34 @@ if [[ -z "${AWG_CONTAINER:-}" ]] && [[ -z "${AWG_PROFILES:-}" ]]; then
 fi
 
 if [[ -z "${AWG_PROFILES:-}" ]]; then
-  __awg_multi_count="$(
-    docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { c++ } END { print c + 0 }' | tr -d '[:space:]'
-  )"
-  if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
-    echo "⚠ Запущено ${__awg_multi_count} контейнеров с именами amnezia-awg*, но AWG_PROFILES не задан."
-    echo "  Переключатель «Инстанс» в панели не появится: см. README, раздел «Несколько инстансов» и «Переменные окружения и sudo»."
-    echo "  Без sudo -E: запишите JSON одной строкой в ${AWG_PROFILE_SNAPSHOT} и снова запустите этот установщик."
+  __awg_names="$(docker ps --format '{{.Names}}' 2>/dev/null | awk '/^amnezia-awg/ { print }' | sort || true)"
+  __awg_multi_count="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+  if [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -eq 1 ]] && [[ -z "${AWG_CONTAINER:-}" ]]; then
+    AWG_CONTAINER="$(printf '%s\n' "${__awg_names}" | sed '/^$/d' | head -n1)"
+    echo "→ AWG_CONTAINER авто-выбран: ${AWG_CONTAINER}"
+  elif [[ "${__awg_multi_count:-0}" =~ ^[0-9]+$ ]] && [[ "${__awg_multi_count}" -gt 1 ]]; then
+    __awg_profiles="["
+    __sep=""
+    while IFS= read -r __awg_name; do
+      [[ -z "${__awg_name}" ]] && continue
+      __id="${__awg_name#amnezia-}"
+      __label="AmneziaWG"
+      if [[ "${__awg_name}" == "amnezia-awg2" ]]; then
+        __label="AmneziaWG 2.0"
+      elif [[ "${__awg_name}" != "amnezia-awg" ]]; then
+        __label="AmneziaWG ${__id}"
+      fi
+      __awg_profiles+="${__sep}{\"id\":\"${__id}\",\"label\":\"${__label}\",\"container\":\"${__awg_name}\",\"confPath\":\"/opt/amnezia/awg/awg0.conf\",\"clientsPath\":\"/opt/amnezia/awg/clientsTable\",\"iface\":\"awg0\",\"wgBinary\":\"awg\",\"pskPath\":\"/opt/amnezia/awg/wireguard_psk.key\"}"
+      __sep=","
+    done <<<"${__awg_names}"
+    __awg_profiles+="]"
+    AWG_PROFILES="${__awg_profiles}"
+    umask 077
+    printf '%s\n' "${AWG_PROFILES}" >"${AWG_PROFILE_SNAPSHOT}" 2>/dev/null || true
+    echo "→ AWG_PROFILES авто-собран из контейнеров amnezia-awg*: ${AWG_PROFILE_SNAPSHOT}"
   fi
 fi
 
-PREV_CONTAINER_ENV=""
-if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-  PREV_CONTAINER_ENV="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)"
-fi
 for __ui_var in UI_HIDE_SECTIONS UI_HIDE_USERS UI_HIDE_WARP UI_HIDE_CASCADE UI_HIDE_MTPROTO WARP_SSH_INSTALL_DIR; do
   if [[ -z "${!__ui_var:-}" ]] && [[ -n "${PREV_CONTAINER_ENV}" ]]; then
     PREV_VAL=""
