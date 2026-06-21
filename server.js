@@ -998,6 +998,189 @@ function parseInterfaceKeyValues(head) {
   return out;
 }
 
+function parseWireGuardSections(text) {
+  const sections = {};
+  let current = null;
+  for (const rawLine of String(text).replace(/\r\n/g, "\n").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    const section = line.match(/^\[([^\]]+)\]$/);
+    if (section) {
+      current = section[1].trim().toLowerCase();
+      sections[current] ||= {};
+      continue;
+    }
+    if (!current) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    sections[current][key] = value;
+  }
+  return sections;
+}
+
+function looksLikeWireGuardConfig(text) {
+  const s = String(text || "");
+  return /\[Interface\]/i.test(s) && /\[Peer\]/i.test(s) && /PrivateKey\s*=/i.test(s);
+}
+
+function extractWireGuardConfigsFromText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  if (looksLikeWireGuardConfig(text)) return [text];
+
+  const found = [];
+  const seen = new Set();
+  const visit = (value) => {
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (looksLikeWireGuardConfig(s) && !seen.has(s)) {
+        seen.add(s);
+        found.push(s);
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const item of Object.values(value)) visit(item);
+    }
+  };
+
+  try {
+    visit(JSON.parse(text));
+  } catch {
+    return [];
+  }
+  return found;
+}
+
+function normalizeImportName(raw, fallback) {
+  const s = String(raw || "").trim().replace(/\s+/g, " ").slice(0, 200);
+  return s || fallback;
+}
+
+function parseClientAddressList(addressRaw) {
+  const parts = String(addressRaw || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (!parts.length) throw new Error("В [Interface] импортируемого конфига нет Address.");
+  return parts.map((part) => {
+    const ip = part.split("/")[0].trim();
+    if (!parseIpv4ToParts(ip)) return part;
+    return part.includes("/") ? part : `${ip}/32`;
+  });
+}
+
+function splitEndpointHostPort(endpoint) {
+  const raw = String(endpoint || "").trim();
+  if (!raw) return {};
+  const m = raw.match(/^(.+):(\d{1,5})$/);
+  if (!m) return { hostName: raw };
+  const port = Number(m[2]);
+  return {
+    hostName: m[1].replace(/^\[|\]$/g, ""),
+    port: Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined,
+  };
+}
+
+function buildImportedLastConfig(clientConf, sections, allowedIps) {
+  const iface = sections.interface || {};
+  const peer = sections.peer || {};
+  const endpoint = splitEndpointHostPort(peer.Endpoint);
+  const out = {
+    config: clientConf.trim(),
+    client_priv_key: iface.PrivateKey,
+    server_pub_key: peer.PublicKey,
+    client_ip: allowedIps[0].replace(/\/\d+$/, ""),
+    allowed_ips: String(peer.AllowedIPs || "0.0.0.0/0, ::/0")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    ...endpoint,
+  };
+  if (peer.PresharedKey) out.psk_key = peer.PresharedKey;
+  if (iface.DNS) out.dns = iface.DNS;
+  if (iface.MTU) out.mtu = iface.MTU;
+  for (const k of ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4", "I1", "I2", "I3", "I4", "I5"]) {
+    if (iface[k]) out[k] = iface[k];
+  }
+  return out;
+}
+
+async function importClientConfigIntoRuntime(rt, { clientConf, clientName }) {
+  const normalized = String(clientConf || "").trim();
+  if (!looksLikeWireGuardConfig(normalized)) {
+    throw new Error("Не найден WireGuard/AmneziaWG .conf: нужны секции [Interface] и [Peer].");
+  }
+  const sections = parseWireGuardSections(normalized);
+  const iface = sections.interface || {};
+  const peer = sections.peer || {};
+  if (!iface.PrivateKey) throw new Error("В [Interface] нет PrivateKey клиента.");
+  const allowedIps = parseClientAddressList(iface.Address);
+  const pub = await wgPubkeyFromPrivate(rt, iface.PrivateKey);
+  const pskLine = peer.PresharedKey ? `PresharedKey = ${peer.PresharedKey}\n` : "";
+  const serverPeerRaw = `[Peer]
+PublicKey = ${pub}
+${pskLine}AllowedIPs = ${allowedIps.join(", ")}
+`;
+  const serverPeer = parsePeerBlock(`${serverPeerRaw}\n`);
+
+  await rt.backupRemoteFiles();
+  const { conf, clients, peerByKey } = await rt.loadState();
+  const serverIface = parseInterfaceKeyValues(conf.head);
+  if (peer.PublicKey && serverIface.PrivateKey) {
+    const currentServerPub = await wgPubkeyFromPrivate(rt, serverIface.PrivateKey);
+    if (String(peer.PublicKey).trim() !== currentServerPub) {
+      throw new Error(
+        "Этот клиентский .conf относится к другому серверу/инстансу. Выберите правильный «Инстанс» или импортируйте конфиг от текущего сервера.",
+      );
+    }
+  }
+  const existingClientIdx = clients.findIndex((c) => c.clientId === pub);
+  const last_config = JSON.stringify(buildImportedLastConfig(normalized, sections, allowedIps));
+  const now = new Date().toISOString();
+  const name = normalizeImportName(clientName, `Импорт ${allowedIps[0].replace(/\/\d+$/, "")}`);
+
+  const nextPeers = peerByKey.has(pub) ? conf.peers : [...conf.peers, serverPeer];
+  const nextClients = [...clients];
+  const userData = {
+    ...(existingClientIdx >= 0 ? clients[existingClientIdx].userData || {} : {}),
+    clientName: name,
+    last_config,
+    allowedIps: allowedIps.join(", "),
+    importedAt: now,
+  };
+  delete userData.disabled;
+  delete userData.disabledAt;
+  delete userData.scheduledTunnelDisconnectAt;
+  const rowPatch = {
+    clientId: pub,
+    userData,
+  };
+  if (existingClientIdx >= 0) {
+    nextClients[existingClientIdx] = { ...clients[existingClientIdx], ...rowPatch };
+  } else {
+    rowPatch.userData.creationDate = now;
+    nextClients.push(rowPatch);
+  }
+
+  await rt.dockerWriteFile(rt.confPath, serializeAwgConf(conf.head, nextPeers));
+  await rt.dockerWriteFile(rt.clientsPath, stringifyClientsTable(nextClients));
+  await rt.applySyncconf();
+  return {
+    clientId: pub,
+    name,
+    allowedIps,
+    peerAdded: !peerByKey.has(pub),
+    tableUpdated: true,
+  };
+}
+
 /** Имя файла только из ASCII — иначе Node отклоняет заголовок Content-Disposition. */
 function safeExportFilenamePart(name, fallback) {
   const toAsciiToken = (s) =>
@@ -1637,7 +1820,7 @@ if (UI_HIDDEN.users || UI_HIDDEN.warp || UI_HIDDEN.cascade || UI_HIDDEN.mtproto)
 if (IS_COMMUNITY) {
   console.warn(`Редакция community (только просмотр клиентов). PRO: ${COMMUNITY_UPGRADE_URL}`);
 }
-app.use(express.json({ limit: "512kb" }));
+app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, version: PANEL_VERSION });
@@ -2376,6 +2559,32 @@ AllowedIPs = ${tunnelIp}/32
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="amnezia-cascade-${baseName}.conf"`);
     res.send(text);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/clients/import-config", requireAuth, requireProTier, async (req, res) => {
+  const rt = runtimeFromExportRequest(req);
+  try {
+    const raw = req.body?.configText ?? req.body?.backupText ?? req.body?.text ?? "";
+    const configs = extractWireGuardConfigsFromText(raw);
+    if (!configs.length) {
+      res.status(400).json({
+        error:
+          "Не нашёл .conf в тексте. Вставьте WireGuard/AmneziaWG конфиг с секциями [Interface] и [Peer] или JSON backup, где такой конфиг хранится строкой.",
+      });
+      return;
+    }
+    const limit = Math.min(configs.length, 20);
+    const prefix = normalizeImportName(req.body?.clientName || req.body?.namePrefix, "Импорт");
+    const imported = [];
+    for (let i = 0; i < limit; i++) {
+      const name = configs.length === 1 ? prefix : `${prefix} ${i + 1}`;
+      imported.push(await importClientConfigIntoRuntime(rt, { clientConf: configs[i], clientName: name }));
+    }
+    res.json({ ok: true, found: configs.length, imported });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e.message || e) });

@@ -844,8 +844,20 @@ tr:last-child td {
   color: var(--muted);
 }
 
-.cascade-form input {
+.cascade-form input,
+.cascade-form textarea {
   width: 100%;
+}
+
+.cascade-form textarea {
+  resize: vertical;
+  min-height: 12rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.45;
+}
+
+.import-form {
+  max-width: 46rem;
 }
 
 .raw {

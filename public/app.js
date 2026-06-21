@@ -658,6 +658,11 @@ if (directForm) {
   directForm.addEventListener("submit", (ev) => void downloadDirectConf(ev));
 }
 
+const importForm = document.querySelector("#import-form");
+if (importForm) {
+  importForm.addEventListener("submit", (ev) => void importClientConfig(ev));
+}
+
 const instanceForm = document.querySelector("#instance-form");
 if (instanceForm) {
   instanceForm.addEventListener("submit", (ev) => void createInstance(ev));
@@ -1418,6 +1423,36 @@ async function downloadDirectConf(ev) {
     if (nameEl) nameEl.value = "";
     if (tunnelEl) tunnelEl.value = "";
     setStatus("Клиент добавлен на сервер, .conf скачан. Обновите таблицу.", false);
+    await loadClients();
+  } catch (e) {
+    setStatus(String(e.message || e), true);
+  }
+}
+
+async function importClientConfig(ev) {
+  ev.preventDefault();
+  const nameEl = document.querySelector("#import-name");
+  const configEl = document.querySelector("#import-config");
+  const configText = configEl?.value.trim() || "";
+  if (!configText) {
+    setStatus("Вставьте .conf или JSON backup для импорта.", true);
+    return;
+  }
+  const body = { configText };
+  const nm = nameEl?.value.trim();
+  if (nm) body.clientName = nm;
+  const pid = currentProfileIdValue();
+  if (pid) body.profileId = pid;
+  try {
+    setStatus("Импортирую клиента в текущий инстанс…", false);
+    const data = await api("/api/clients/import-config", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const count = Array.isArray(data.imported) ? data.imported.length : 0;
+    if (configEl) configEl.value = "";
+    if (nameEl) nameEl.value = "";
+    setStatus(`Импортировано клиентов: ${count}. Таблица обновлена.`, false);
     await loadClients();
   } catch (e) {
     setStatus(String(e.message || e), true);

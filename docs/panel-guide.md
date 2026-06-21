@@ -11,6 +11,7 @@
 | **Cloudflare WARP** | *Необязательно.* Вывод части клиентов в интернет через интерфейс `warp` в контейнере AWG. Если WARP не ставили — статус **«Не установлен»** нормален; панель и VPN без этого работают. Установка и удаление — скрипт `scripts/warp-amnezia.sh` на хосте (`install` / **`uninstall`**), подробности в основном [README](../README.md). |
 | **Telegram MTProto‑прокси** | *Необязательно*, не часть AWG. Docker-контейнер официального образа **telegrammessenger/proxy**; установка из панели, ссылка **`tg://proxy`**, переменные **`MTPRO_*`** — см. основной [README](../README.md). |
 | **Новый клиент под каскад** | Клиент в конфиге смотрит на **промежуточный узел** по Endpoint; peer и ключи создаются **на текущем VPS** и отдаются в `.conf`. На промежуточном сервере заранее нужен проброс порта DNAT UDP до WG этого VPS ([**kaskad_web_vpn**](https://github.com/andrey271192/kaskad_web_vpn) или свой проброс); в блоке см. текст и команду установки каскад-панели. |
+| **Импорт клиента** | Перенос готового клиента из `.conf` или JSON backup Amnezia, если backup содержит текстовый конфиг. Панель восстанавливает строку в `clientsTable`, сохраняет `last_config` и добавляет peer только если его ещё нет в серверном конфиге. |
 | **Пользователи** | Вкл/выкл peer, удаление, переименование, даты отключения; экспорт `.conf` если в записи есть `userData.last_config`. |
 
 ## Переключатель «Инстанс» не отображается
@@ -61,6 +62,7 @@
 
 - **Старые строки без `last_config`** — полный `.conf` с сервера собрать нельзя (нет приватного ключа). Используйте приложение Amnezia или блок **«Новый клиент под каскад»** (новый ключ на сервере).
 - **Экспорт по кнопкам** — только если в `clientsTable` есть **`userData.last_config`** с полем `config` или `client_priv_key`.
+- **Импорт из приложения Amnezia** — откройте блок **«Импорт клиента»**, выберите нужный **«Инстанс»**, вставьте клиентский `.conf` или JSON backup, где внутри есть такой `.conf`, и нажмите импорт. Если peer уже есть в `awg0.conf`, панель не создаёт дубль, а только восстанавливает/обновляет строку в `clientsTable`.
 
 ### Экспорт: имя файла и прямая ссылка
 
@@ -89,6 +91,7 @@
 | POST | `/api/clients/disconnect-date` | Даты отключения / расписание |
 | GET/POST | `/api/clients/export-config` | Скачать `.conf`; GET — прямая ссылка (сессия); опционально `?token=…` если задан `EXPORT_CONFIG_SECRET` |
 | POST | `/api/clients/create-cascade` | `{ "endpointHost", "endpointPort?", "tunnelIp?", "clientName?", "profileId?" }` — новый peer и файл `.conf` |
+| POST | `/api/clients/import-config` | `{ "configText", "clientName?", "profileId?" }` — импорт клиента из `.conf` или JSON backup с вложенным `.conf` |
 | POST | `/api/warp/host-setup` | Установка/удаление WARP на хосте по SSH: `{ "rootPassword", "cmd": "install" \| "uninstall" }` (как синхронизация времени; каталог скрипта — `WARP_SSH_INSTALL_DIR`) |
 | POST | `/api/warp/start` | Поднять WARP |
 | POST | `/api/warp/stop` | Остановить WARP |

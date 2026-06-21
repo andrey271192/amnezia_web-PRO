@@ -240,6 +240,33 @@
       </div>
     </details>
 
+    <details class="panel-fold cascade-panel" id="import-panel">
+      <summary class="fold-summary">
+        <span class="fold-arrow" aria-hidden="true"></span>
+        <span class="fold-titles">
+          <span class="fold-h">Импорт клиента</span>
+          <span class="muted fold-meta">Перенос из готового .conf или backup Amnezia, где внутри есть конфиг</span>
+        </span>
+      </summary>
+      <div class="panel-fold-body">
+        <div class="muted cascade-guide">
+          <p class="cascade-intro">
+            Вставьте содержимое клиентского <code class="inline">.conf</code> или JSON backup. Панель добавит peer в текущий инстанс,
+            восстановит запись в <code class="inline">clientsTable</code> и сохранит исходный конфиг для дальнейшего экспорта.
+          </p>
+        </div>
+        <form id="import-form" class="cascade-form import-form">
+          <label for="import-name">Имя клиента / префикс</label>
+          <input id="import-name" type="text" placeholder="Например iPhone из backup" autocomplete="off">
+
+          <label for="import-config">.conf или JSON backup</label>
+          <textarea id="import-config" rows="10" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.8.1.10/32&#10;&#10;[Peer]&#10;PublicKey = ..."></textarea>
+
+          <button type="submit" class="btn primary">Импортировать в текущий инстанс</button>
+        </form>
+      </div>
+    </details>
+
     <details class="panel-fold cascade-panel" id="cascade-panel" open>
       <summary class="fold-summary">
         <span class="fold-arrow" aria-hidden="true"></span>
