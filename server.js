@@ -164,7 +164,7 @@ function loadManagedProfiles() {
     const raw = fs.readFileSync(INSTANCES_FILE, "utf-8");
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.map((m) => ({
+    const mapped = arr.map((m) => ({
       id: String(m.id),
       label: String(m.label || m.id),
       container: String(m.container || m.id),
@@ -181,6 +181,13 @@ function loadManagedProfiles() {
       variant: String(m.variant || "awg2"),
       port: Number(m.port) || null,
     }));
+    const seen = new Set();
+    return mapped.filter((p) => {
+      const key = profileIdentityKey(p);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -188,15 +195,40 @@ function loadManagedProfiles() {
 
 function saveManagedProfiles(list) {
   fs.mkdirSync(path.dirname(INSTANCES_FILE), { recursive: true });
-  fs.writeFileSync(INSTANCES_FILE, JSON.stringify(list, null, 2));
+  const seen = new Set();
+  const deduped = [];
+  for (const p of list) {
+    const key = profileIdentityKey(p);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(p);
+  }
+  fs.writeFileSync(INSTANCES_FILE, JSON.stringify(deduped, null, 2));
 }
 
-// Effective profile set = env profiles + managed instances (deduped by id).
+function profileIdentityKey(p) {
+  return [
+    String(p.container || "").trim(),
+    String(p.confPath || "").trim(),
+    String(p.iface || "").trim(),
+    String(p.clientsPath || "").trim(),
+  ].join("|");
+}
+
+// Effective profile set = env profiles + managed instances (deduped by id and target files).
 function getProfiles() {
   const managed = loadManagedProfiles();
-  const seen = new Set(ENV_PROFILES.map((p) => p.id));
-  const out = [...ENV_PROFILES];
-  for (const m of managed) if (!seen.has(m.id)) { out.push(m); seen.add(m.id); }
+  const seenIds = new Set();
+  const seenTargets = new Set();
+  const out = [];
+  for (const p of [...ENV_PROFILES, ...managed]) {
+    const id = String(p.id || "").trim();
+    const target = profileIdentityKey(p);
+    if ((id && seenIds.has(id)) || (target !== "|||" && seenTargets.has(target))) continue;
+    out.push(p);
+    if (id) seenIds.add(id);
+    if (target !== "|||") seenTargets.add(target);
+  }
   return out;
 }
 
@@ -2873,6 +2905,7 @@ app.get("/api/instances", requireAuth, async (_req, res) => {
   const profiles = getProfiles();
   const running = await listRunningContainerNames();
   const items = [];
+  const seenRuntimeTargets = new Set();
   for (const prof of profiles) {
     const isManaged = managedIds.has(prof.id) || prof.managed === true;
     let container = prof.container;
@@ -2894,6 +2927,9 @@ app.get("/api/instances", requireAuth, async (_req, res) => {
     } catch {
       runningNow = container ? running.includes(container) : false;
     }
+    const runtimeTarget = [container, prof.confPath, prof.iface, prof.clientsPath].join("|");
+    if (seenRuntimeTargets.has(runtimeTarget)) continue;
+    seenRuntimeTargets.add(runtimeTarget);
     items.push({
       id: prof.id,
       label: prof.label,
