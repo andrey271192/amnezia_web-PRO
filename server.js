@@ -2900,6 +2900,13 @@ function detectVariantFromHead(head, iface) {
   return "awg";
 }
 
+function inferVariantFromProfile(prof) {
+  const raw = `${prof.variant || ""} ${prof.id || ""} ${prof.container || ""} ${prof.label || ""}`.toLowerCase();
+  if (raw.includes("legacy") || prof.iface === "wg0") return "legacy";
+  if (raw.includes("awg2") || raw.includes("2.0")) return "awg2";
+  return "awg";
+}
+
 app.get("/api/instances", requireAuth, async (_req, res) => {
   const managedIds = new Set(loadManagedProfiles().map((m) => m.id));
   const profiles = getProfiles();
@@ -2912,7 +2919,7 @@ app.get("/api/instances", requireAuth, async (_req, res) => {
     let runningNow = false;
     let peers = null;
     let port = prof.port || null;
-    let variant = prof.variant || "awg2";
+    let variant = prof.variant || inferVariantFromProfile(prof);
     try {
       const rt = createRuntime(prof);
       container = await rt.resolveContainer();

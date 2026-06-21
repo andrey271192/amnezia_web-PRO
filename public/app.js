@@ -1482,6 +1482,7 @@ async function loadInstances() {
   }
   grid.innerHTML = list.map((i) => {
     const m = VARIANT_META[i.variant] || { icon: "🛡", title: i.variant, badge: "" };
+    const title = i.label || m.title || i.variant || i.id;
     const status = i.running
       ? `<span class="inst-status on">● РАБОТАЕТ</span>`
       : `<span class="inst-status off">● ОСТАНОВЛЕН</span>`;
@@ -1493,14 +1494,14 @@ async function loadInstances() {
       ? ""
       : `<span class="inst-src" title="Контейнер развёрнут приложением Amnezia">приложение Amnezia</span>`;
     const delBtn = i.managed
-      ? `<button class="btn small warn" data-act="delete" data-id="${i.id}" data-label="${escapeHtmlSafe(m.title)}">Удалить</button>`
+      ? `<button class="btn small warn" data-act="delete" data-id="${i.id}" data-label="${escapeHtmlSafe(title)}">Удалить</button>`
       : "";
     return `<div class="inst-card">
       <div class="inst-card-head">
         <div class="inst-ico">${m.icon}</div>
         ${toggle}
       </div>
-      <div class="inst-title">${escapeHtmlSafe(m.title)} ${badge} ${srcTag}</div>
+      <div class="inst-title">${escapeHtmlSafe(title)} ${badge} ${srcTag}</div>
       <div class="inst-desc muted">${escapeHtmlSafe(i.variantMeta?.desc || "")}</div>
       <div class="inst-status-row">${status}</div>
       <div class="inst-stats">
