@@ -955,16 +955,73 @@ function serializeAwgConf(head, peers) {
 
 function parseClientsTable(raw) {
   const data = JSON.parse(raw);
-  if (!Array.isArray(data)) throw new Error("clientsTable is not an array");
-  return data;
+  return normalizeClientsTableRows(data);
 }
 
 function stringifyClientsTable(rows) {
   return `${JSON.stringify(rows, null, 4)}\n`;
 }
 
+function looksLikePublicKey(s) {
+  return /^[A-Za-z0-9+/=_-]{32,80}$/.test(String(s || "").trim());
+}
+
+function normalizeClientTableRow(row, key = "") {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const id = clientRowId(row) || (looksLikePublicKey(key) ? String(key).trim() : "");
+  if (!id) return { ...row };
+  const ud = clientRowUserData(row);
+  const userData = { ...ud };
+  for (const [from, to] of [
+    ["name", "clientName"],
+    ["clientName", "clientName"],
+    ["allowedIps", "allowedIps"],
+    ["allowedIPs", "allowedIps"],
+    ["last_config", "last_config"],
+    ["lastConfig", "last_config"],
+    ["creationDate", "creationDate"],
+  ]) {
+    if (row[from] != null && userData[to] == null) userData[to] = row[from];
+  }
+  return { ...row, clientId: id, userData };
+}
+
+function normalizeClientsTableRows(data) {
+  if (Array.isArray(data)) {
+    return data.map((row) => normalizeClientTableRow(row)).filter(Boolean);
+  }
+  if (!data || typeof data !== "object") {
+    throw new Error("clientsTable JSON is not an object/array");
+  }
+  for (const key of ["clients", "users", "rows", "items", "data", "clientList", "clientsTable"]) {
+    if (Array.isArray(data[key])) {
+      return data[key].map((row) => normalizeClientTableRow(row)).filter(Boolean);
+    }
+  }
+  const out = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const row = normalizeClientTableRow(value, key);
+      if (row) out.push(row);
+    }
+  }
+  if (out.length) return out;
+  throw new Error("clientsTable format not recognized");
+}
+
 function clientRowId(row) {
-  return String(row?.clientId ?? row?.id ?? row?.publicKey ?? row?.client_id ?? "").trim();
+  return String(
+    row?.clientId ??
+      row?.id ??
+      row?.publicKey ??
+      row?.public_key ??
+      row?.key ??
+      row?.client_id ??
+      row?.userData?.clientId ??
+      row?.userData?.publicKey ??
+      row?.userData?.public_key ??
+      "",
+  ).trim();
 }
 
 function clientRowUserData(row) {
@@ -2385,6 +2442,54 @@ app.post("/api/clients/sync-peers", requireAuth, requireProTier, async (req, res
       totalPeers: conf.peers.length,
       totalClientsTable: clients.length,
       clients: added,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.get("/api/clients/source-report", requireAuth, async (req, res) => {
+  const rt = runtimeFromExportRequest(req);
+  try {
+    const container = await rt.resolveContainer();
+    let confText = "";
+    let tableText = "";
+    let conf = { peers: [] };
+    let clients = [];
+    let clientsError = null;
+    try {
+      confText = await rt.dockerReadFile(rt.confPath);
+      conf = splitAwgConf(confText);
+    } catch (e) {
+      return res.status(500).json({ error: `Не удалось прочитать ${rt.confPath}: ${String(e.message || e)}` });
+    }
+    try {
+      tableText = await rt.dockerReadFile(rt.clientsPath);
+      clients = parseClientsTable(tableText);
+    } catch (e) {
+      clientsError = String(e.message || e);
+    }
+    const clientIds = new Set(clients.map(clientRowId).filter(Boolean));
+    const peerIds = new Set(conf.peers.map((p) => p.publicKey).filter(Boolean));
+    const missingInTable = [...peerIds].filter((id) => !clientIds.has(id));
+    const tableOnly = [...clientIds].filter((id) => !peerIds.has(id));
+    res.json({
+      profileId: rt.profile.id,
+      profileLabel: rt.profile.label,
+      container,
+      confPath: rt.confPath,
+      clientsPath: rt.clientsPath,
+      confBytes: Buffer.byteLength(confText, "utf8"),
+      clientsTableBytes: Buffer.byteLength(tableText, "utf8"),
+      peerCount: conf.peers.length,
+      clientsTableCount: clients.length,
+      clientsTableParseError: clientsError,
+      missingInTableCount: missingInTable.length,
+      tableOnlyCount: tableOnly.length,
+      peerIdsShort: [...peerIds].map((id) => `${id.slice(0, 10)}…`),
+      clientIdsShort: [...clientIds].map((id) => `${id.slice(0, 10)}…`),
+      missingInTableShort: missingInTable.map((id) => `${id.slice(0, 10)}…`),
     });
   } catch (e) {
     console.error(e);
