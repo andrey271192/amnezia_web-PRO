@@ -828,6 +828,7 @@ function createRuntime(profile) {
   let resolvedContainer = null;
   let resolvedConfPath = null;
   let resolvedClientsPath = null;
+  let resolvedWgBinary = null;
   const confPath = profile.confPath;
   const clientsPath = profile.clientsPath;
   const iface = profile.iface;
@@ -928,6 +929,30 @@ function createRuntime(profile) {
     return resolvedClientsPath;
   }
 
+  async function resolveWgBinary() {
+    if (resolvedWgBinary) return resolvedWgBinary;
+    const container = await resolveContainer();
+    const preferred = uniqueList([
+      wgBinary,
+      ifaceFromConfPath(resolvedConfPath || confPath, iface) === "wg0" ? "wg" : "",
+      "awg",
+      "wg",
+    ]);
+    for (const candidate of preferred) {
+      try {
+        await execDocker(["exec", container, "sh", "-c", `command -v '${candidate}' >/dev/null 2>&1`]);
+        resolvedWgBinary = candidate;
+        if (resolvedWgBinary !== wgBinary) {
+          console.log(`→ WG binary авто: «${resolvedWgBinary}» вместо «${wgBinary}» (${profile.label || profile.id})`);
+        }
+        return resolvedWgBinary;
+      } catch {
+        /* not present */
+      }
+    }
+    throw new Error(`Не найден wg/awg binary в контейнере ${container}: проверял ${preferred.join(", ")}`);
+  }
+
   async function dockerExec(cmd) {
     const container = await resolveContainer();
     const { stdout, stderr } = await execDocker(["exec", container, "sh", "-c", cmd]);
@@ -968,8 +993,9 @@ function createRuntime(profile) {
   async function applySyncconf() {
     const activeConfPath = await resolveConfPath();
     const activeIface = ifaceFromConfPath(activeConfPath, iface);
+    const activeBinary = await resolveWgBinary();
     await dockerExec(
-      `wg-quick strip '${activeConfPath}' > /tmp/wg-admin-strip.conf && ${wgBinary} syncconf ${activeIface} /tmp/wg-admin-strip.conf`
+      `wg-quick strip '${activeConfPath}' > /tmp/wg-admin-strip.conf && ${activeBinary} syncconf ${activeIface} /tmp/wg-admin-strip.conf`
     );
   }
 
@@ -1012,8 +1038,12 @@ function createRuntime(profile) {
     get iface() {
       return ifaceFromConfPath(resolvedConfPath || confPath, iface);
     },
+    get wgBinary() {
+      return resolvedWgBinary || wgBinary;
+    },
     resolveConfPath,
     resolveClientsPath,
+    resolveWgBinary,
     get clientsPath() {
       return resolvedClientsPath || clientsPath;
     },
@@ -1416,7 +1446,8 @@ async function wgPubkeyFromPrivate(rt, privKeyB64) {
     throw new Error("Некорректный формат приватного ключа сервера в awg0.conf");
   }
   const q = key.replace(/'/g, `'\\''`);
-  const out = await rt.dockerExec(`printf '%s\\n' '${q}' | ${rt.profile.wgBinary} pubkey`);
+  const activeBinary = await rt.resolveWgBinary();
+  const out = await rt.dockerExec(`printf '%s\\n' '${q}' | ${activeBinary} pubkey`);
   const pub = out.trim().split(/\s+/)[0];
   if (!pub) throw new Error("Не удалось получить публичный ключ сервера (wg pubkey).");
   return pub;
@@ -1485,7 +1516,8 @@ async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
   const endpointHost = resolveExportEndpointHost(lc, req);
   const listenPort = ifaceMap.ListenPort ? Number(ifaceMap.ListenPort) : NaN;
   const portNum = Number(pickLc(lc, "port")) || (Number.isFinite(listenPort) ? listenPort : NaN);
-  const defaultPort = rt.profile.wgBinary === "awg" ? 55424 : 51820;
+  const activeBinary = await rt.resolveWgBinary();
+  const defaultPort = activeBinary === "awg" ? 55424 : 51820;
   const port = Number.isFinite(portNum) && portNum > 0 ? portNum : defaultPort;
 
   const dns1 = String(pickLc(lc, "dns1") || process.env.CLIENT_EXPORT_DNS1?.trim() || "1.1.1.1");
@@ -1495,7 +1527,7 @@ async function buildClientConfExport(rt, lc, ifaceMap, req, row, conf) {
   const mtuVal = pickLc(lc, "mtu", "MTU");
   const mtuLine = mtuVal ? `MTU = ${String(mtuVal).trim()}\n` : "";
 
-  if (rt.profile.wgBinary === "awg") {
+  if (activeBinary === "awg") {
     const Jc = String(pickLc(lc, "Jc", "junk_packet_count", "junkPacketCount") ?? AWG_EXPORT_DEFAULTS.Jc);
     const Jmin = String(pickLc(lc, "Jmin", "junk_packet_min_size", "junkPacketMinSize") ?? AWG_EXPORT_DEFAULTS.Jmin);
     const Jmax = String(pickLc(lc, "Jmax", "junk_packet_max_size", "junkPacketMaxSize") ?? AWG_EXPORT_DEFAULTS.Jmax);
@@ -1587,13 +1619,14 @@ function parseIpv4ToParts(ip) {
 }
 
 async function awgGenKeypair(rt) {
-  const privOut = await rt.dockerExec(`${rt.profile.wgBinary} genkey`);
+  const activeBinary = await rt.resolveWgBinary();
+  const privOut = await rt.dockerExec(`${activeBinary} genkey`);
   const priv = privOut.trim().split(/\s+/)[0];
   if (!priv || !/^[A-Za-z0-9+/=_-]+$/.test(priv)) {
     throw new Error("Не удалось сгенерировать ключ клиента (genkey).");
   }
   const q = priv.replace(/'/g, `'\\''`);
-  const pubOut = await rt.dockerExec(`printf '%s\\n' '${q}' | ${rt.profile.wgBinary} pubkey`);
+  const pubOut = await rt.dockerExec(`printf '%s\\n' '${q}' | ${activeBinary} pubkey`);
   const pub = pubOut.trim().split(/\s+/)[0];
   if (!pub) throw new Error("Не удалось получить публичный ключ клиента.");
   return { priv, pub };
@@ -2412,7 +2445,7 @@ app.get("/api/clients", requireAuth, async (req, res) => {
   try {
     let wgShow = "";
     try {
-      wgShow = await rt.dockerExec(`${rt.profile.wgBinary} show ${rt.iface}`);
+      wgShow = await rt.dockerExec(`${await rt.resolveWgBinary()} show ${rt.iface}`);
     } catch {
       wgShow = "";
     }
@@ -2497,6 +2530,7 @@ app.get("/api/clients", requireAuth, async (req, res) => {
       confPath: activeConfPath || rt.confPath,
       clientsPath: activeClientsPath || rt.clientsPath,
       iface: rt.iface,
+      wgBinary: rt.wgBinary,
       protocol: "AmneziaWG",
       peerCount: conf.peers.length,
       clients: rows,
@@ -2557,6 +2591,7 @@ app.get("/api/clients/source-report", requireAuth, async (req, res) => {
     const container = await rt.resolveContainer();
     const activeConfPath = await rt.resolveConfPath();
     const activeClientsPath = await rt.resolveClientsPath();
+    const activeBinary = await rt.resolveWgBinary();
     let confText = "";
     let tableText = "";
     let conf = { peers: [] };
@@ -2584,6 +2619,7 @@ app.get("/api/clients/source-report", requireAuth, async (req, res) => {
       container,
       confPath: activeConfPath,
       iface: rt.iface,
+      wgBinary: activeBinary,
       clientsPath: activeClientsPath,
       confBytes: Buffer.byteLength(confText, "utf8"),
       clientsTableBytes: Buffer.byteLength(tableText, "utf8"),
@@ -2713,7 +2749,7 @@ app.post("/api/clients/create", requireAuth, requireProTier, async (req, res) =>
       });
       return;
     }
-    const defaultPort = rt.profile.wgBinary === "awg" ? 55424 : 51820;
+    const defaultPort = (await rt.resolveWgBinary()) === "awg" ? 55424 : 51820;
     const endpointPort =
       Number.isFinite(listenPort) && listenPort > 0 ? listenPort : defaultPort;
     const psk = await rt.inferPskFromConf(conf);
@@ -2819,7 +2855,7 @@ app.post("/api/clients/create-cascade", requireAuth, requireProTier, async (req,
       endpointPort =
         Number.isFinite(listenPort) && listenPort > 0
           ? listenPort
-          : rt.profile.wgBinary === "awg"
+          : (await rt.resolveWgBinary()) === "awg"
             ? 55424
             : 51820;
     }
