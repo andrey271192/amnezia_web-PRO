@@ -4,6 +4,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { healClientsMeta, readClientsMeta, writeClientsMeta } from "./scripts/clients-meta.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1007,7 +1008,25 @@ function createRuntime(profile) {
       dockerReadFile(activeClientsPath),
     ]);
     const conf = splitAwgConf(confText);
-    const clients = parseClientsTable(tableText);
+    const parsed = parseClientsTable(tableText);
+    // ponytail: приложение AmneziaVPN пересобирает clientsTable из awg0.conf и стирает
+    // имена/даты/last_config — возвращаем их из снимка в /data и чиним файл на сервере.
+    const { clients, restored, meta, metaChanged } = healClientsMeta(
+      parsed,
+      readClientsMeta(DATA_DIR, profile.id)
+    );
+    if (metaChanged) writeClientsMeta(DATA_DIR, profile.id, meta);
+    if (restored) {
+      console.log(
+        `→ clientsTable: восстановлено ${restored} потерянных полей клиентов (${profile.label || profile.id})`
+      );
+      try {
+        await backupRemoteFiles();
+        await dockerWriteFile(activeClientsPath, stringifyClientsTable(clients));
+      } catch (e) {
+        console.warn(`clientsTable: восстановить файл на сервере не удалось: ${e.message}`);
+      }
+    }
     const peerByKey = new Map(conf.peers.map((p) => [p.publicKey, p]));
     return { confText, conf, clients, peerByKey, confPath: activeConfPath, clientsPath: activeClientsPath };
   }
