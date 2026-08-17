@@ -11,8 +11,17 @@
 import fs from "fs";
 import path from "path";
 
-/** Поля userData, которые ведёт панель и которые нельзя терять. */
-export const META_FIELDS = ["clientName", "creationDate", "last_config", "allowedIps"];
+/** Поля, которые панель сама никогда не стирает: пустое значение = потеря. */
+export const STABLE_FIELDS = ["clientName", "creationDate", "last_config", "allowedIps"];
+
+/**
+ * Даты, которые панель штатно снимает («Задать дату», отключение по расписанию).
+ * Их возвращаем только когда запись действительно затёрли, иначе воскресим
+ * снятое расписание.
+ */
+export const DATE_FIELDS = ["lastDisconnectedAt", "scheduledTunnelDisconnectAt"];
+
+export const META_FIELDS = [...STABLE_FIELDS, ...DATE_FIELDS];
 
 /** «Client 17» — дефолтное имя от приложения, оно не ценнее сохранённого. */
 export function isPlaceholderName(name) {
@@ -58,7 +67,9 @@ export function healClientsMeta(clients, meta) {
     if (!id) return row;
     const userData = { ...(row.userData || {}) };
     const saved = nextMeta[id] || {};
-    for (const field of META_FIELDS) {
+    // Приложение сносит creationDate целиком — по нему и опознаём затирание.
+    const wiped = !isMeaningful("creationDate", userData.creationDate) && isMeaningful("creationDate", saved.creationDate);
+    for (const field of wiped ? META_FIELDS : STABLE_FIELDS) {
       if (!isMeaningful(field, userData[field]) && isMeaningful(field, saved[field])) {
         userData[field] = saved[field];
         restored++;
@@ -69,6 +80,7 @@ export function healClientsMeta(clients, meta) {
       if (isMeaningful(field, userData[field])) keep[field] = userData[field];
     }
     if (Object.keys(keep).length) nextMeta[id] = keep;
+    else delete nextMeta[id];
     return { ...row, userData };
   });
   return { clients: healed, restored, meta: nextMeta, metaChanged: JSON.stringify(nextMeta) !== before };

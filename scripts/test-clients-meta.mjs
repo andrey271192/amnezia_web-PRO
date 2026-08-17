@@ -3,7 +3,15 @@ import assert from "assert";
 import { healClientsMeta, isPlaceholderName } from "./clients-meta.mjs";
 
 const good = [
-  { clientId: "A=", userData: { clientName: "Mama", creationDate: "Sat Jun 27 2026", last_config: "{...}" } },
+  {
+    clientId: "A=",
+    userData: {
+      clientName: "Mama",
+      creationDate: "Sat Jun 27 2026",
+      last_config: "{...}",
+      lastDisconnectedAt: "2027-05-06T10:00:00.000Z",
+    },
+  },
   { clientId: "B=", userData: { clientName: "teplici", creationDate: "Sat Jul 04 2026" } },
 ];
 
@@ -22,9 +30,18 @@ const wiped = [
 const fixed = healClientsMeta(wiped, snap.meta);
 assert.equal(fixed.clients[0].userData.clientName, "Mama");
 assert.equal(fixed.clients[0].userData.last_config, "{...}");
+assert.equal(fixed.clients[0].userData.lastDisconnectedAt, "2027-05-06T10:00:00.000Z");
 assert.equal(fixed.clients[1].userData.creationDate, "Sat Jul 04 2026");
 assert.equal(fixed.clients[2].userData.clientName, "Client 2");
-assert.equal(fixed.restored, 5);
+assert.equal(fixed.restored, 6);
+
+// 2б. Дату сняли в панели (запись целая) — снимок её не воскрешает и забывает.
+const cleared = healClientsMeta(
+  [{ clientId: "A=", userData: { clientName: "Mama", creationDate: "Sat Jun 27 2026", last_config: "{...}" } }],
+  snap.meta
+);
+assert.equal(cleared.clients[0].userData.lastDisconnectedAt, undefined);
+assert.equal(cleared.meta["A="].lastDisconnectedAt, undefined);
 
 // 3. Повторный прогон уже целой таблицы ничего не чинит и не переписывает снимок.
 const again = healClientsMeta(fixed.clients, fixed.meta);
