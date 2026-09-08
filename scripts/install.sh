@@ -320,6 +320,11 @@ if [[ "${SKIP_LANDING:-}" != "1" ]] && [[ -d "${INSTALL_DIR}/landing" ]]; then
     echo "⚠ Не удалось запустить лендинг (часто порт ${LANDING_PORT} занят). Поставьте LANDING_PORT=8081 или SKIP_LANDING=1."
   fi
 else
+  # ponytail: старый контейнер переживает переустановку (--restart unless-stopped)
+  # и продолжает держать LANDING_PORT — снимаем его, иначе SKIP_LANDING=1 не даёт эффекта
+  if docker rm -f "${LANDING_CONTAINER}" >/dev/null 2>&1; then
+    echo "→ Старый лендинг ${LANDING_CONTAINER} остановлен и удалён."
+  fi
   echo "→ Лендинг пропущен (SKIP_LANDING=1 или нет каталога landing)."
 fi
 
